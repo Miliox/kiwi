@@ -55,16 +55,40 @@ fn r16_cast_tests() {
     assert_eq!(R16::zero(), R16::from(0u16));
 }
 
+
+bitflags! {
+    struct Flags: u8 {
+        const Z = 0b1000_0000;
+        const N = 0b0100_0000;
+        const H = 0b0010_0000;
+        const C = 0b0001_0000;
+    }
+}
+
+impl From<u8> for Flags {
+    fn from(value: u8) -> Self {
+        Flags::from_bits(value).unwrap()
+    }
+}
+
+impl Into<u8> for Flags {
+    fn into(self) -> u8 {
+        self.bits
+    }
+}
+
 #[allow(dead_code)]
 pub struct Cpu {
-    a: u8,
-    f: u8,
+    a: u8,    // accumulator
+    f: u8,    // flags
     b: u8,
     c: u8,
     d: u8,
     e: u8,
     h: u8,
     l: u8,
-    sp : u16,
-    pc : u16,
+    sp : u16,    // stack pointer
+    pc : u16,    // program counter
+    clock: u64,  // accumulated clock counter
+    iflag: bool, // interrupt flag
 }
