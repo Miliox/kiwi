@@ -1,22 +1,20 @@
 use crate::mmu::Mmu;
-use crate::alu::*;
+use crate::alu8::ALU8;
+use crate::alu16::ALU16;
+use crate::flags::Flags;
 
 #[allow(dead_code)]
 #[derive(Default)]
 pub struct Cpu {
-    a: u8,       // accumulator register
-    f: u8,       // flags register
-    b: u8,       // general purpose register (MSB)
-    c: u8,       // general purpose register (LSB) commonly used as zero address index
-    d: u8,       // general purpose register (MSB)
-    e: u8,       // general purpose register (LSB)
-    h: u8,       // general purpose register (MSB) commonly used as address pointer
-    l: u8,       // general purpose register (LSB) commonly used as address pointer
-    sp : u16,    // stack pointer register
-    pc : u16,    // program counter register
-    clock: u64,  // accumulated clock counter
-    ie_flag: bool, // interrupt enable flag
-    if_flag: u8,   // interrupt flags flag
+    alu8: ALU8,    // Arithmetic Logic Unit for 8 bit registers
+    rr: [u8; 8],   // A (0), F (1), B (2), C (3), D (4), E (5), H (6), L (7)
+    sp : u16,      // stack pointer register
+    pc : u16,      // program counter register
+    next_pc: u16,  // next program counter position
+
+    clock: u64,    // accumulated clock counter
+    int_enable: bool, // interrupt enable flag
+    int_flags:  u8,   // interrupt flags flag
 }
 
 const INSTRUCTION_SIZE: [u8; 256] = [
@@ -328,13 +326,13 @@ const INSTRUCTION_MNEMONIC: [&str; 256] = [
     "PUSH HL       ;",
     "AND $$00      ;",
     "RST $20       ;",
-    "ADD SP,$$00   ;",
+    "ADD SP,$00    ;",
     "JP HL         ;",
     "LD ($0000), A ;",
     "[EB] - INVALID;",
     "[EC] - INVALID;",
     "[ED] - INVALID;",
-    "XOR $$00      ;",
+    "XOR $00       ;",
     "RST $28       ;",
 
     // 0XF0 ~ 0XFF
@@ -358,252 +356,450 @@ const INSTRUCTION_MNEMONIC: [&str; 256] = [
 
 #[allow(dead_code)]
 impl Cpu {
-    fn af(&self) -> u16 {
-        (self.a as u16) << 8 | self.f as u16
+    const A: usize = 0; // r8 A index
+    const F: usize = 1; // r8 F index
+    const B: usize = 2; // r8 B index
+    const C: usize = 3; // r8 C index
+    const D: usize = 4; // r8 D index
+    const E: usize = 5; // r8 E index
+    const H: usize = 6; // r8 H index
+    const L: usize = 7; // r8 L index
+
+    const AF: usize = Self::A; // r16 AF index
+    const BC: usize = Self::B; // r16 BC index
+    const DE: usize = Self::D; // r16 DE index
+    const HL: usize = Self::H; // r16 HL index
+
+    #[inline(always)]
+    pub fn a(&self) -> u8 {
+        self.rr[Self::A]
     }
 
-    fn bc(&self) -> u16 {
-        (self.b as u16) << 8 | self.c as u16
+    #[inline(always)]
+    pub fn f(&self) -> u8 {
+        self.alu8.flags.into()
     }
 
-    fn de(&self) -> u16 {
-        (self.d as u16) << 8 | self.e as u16
+    #[inline(always)]
+    pub fn b(&self) -> u8 {
+        self.rr[Self::B]
     }
 
-    fn hl(&self) -> u16 {
-        (self.h as u16) << 8 | self.l as u16
+    #[inline(always)]
+    pub fn c(&self) -> u8 {
+        self.rr[Self::C]
     }
 
-    fn cycle(&mut self, mmu: &mut dyn Mmu) -> u64 {
-        let opcode = mmu.read_byte(self.pc);
+    #[inline(always)]
+    pub fn d(&self) -> u8 {
+        self.rr[Self::D]
+    }
 
-        match INSTRUCTION_SIZE[opcode as usize] {
+    #[inline(always)]
+    pub fn e(&self) -> u8 {
+        self.rr[Self::E]
+    }
+
+    #[inline(always)]
+    pub fn h(&self) -> u8 {
+        self.rr[Self::H]
+    }
+
+    #[inline(always)]
+    pub fn l(&self) -> u8 {
+        self.rr[Self::L]
+    }
+
+    #[inline(always)]
+    pub fn af(&self) -> u16 {
+        u16::from_be_bytes([self.a(), self.f()])
+    }
+
+    #[inline(always)]
+    pub fn bc(&self) -> u16 {
+        u16::from_be_bytes([self.b(), self.c()])
+    }
+
+    #[inline(always)]
+    pub fn de(&self) -> u16 {
+        u16::from_be_bytes([self.d(), self.e()])
+    }
+
+    #[inline(always)]
+    pub fn hl(&self) -> u16 {
+        u16::from_be_bytes([self.h(), self.l()])
+    }
+
+    #[inline(always)]
+    pub fn sp(&self) -> u16 {
+        self.sp
+    }
+
+    #[inline(always)]
+    pub fn pc(&self) -> u16 {
+        self.pc
+    }
+
+    #[inline(always)]
+    pub fn set_a(&mut self, data: u8) {
+        self.rr[Self::A] = data
+    }
+
+    #[inline(always)]
+    pub fn set_f(&mut self, data: u8) {
+        self.alu8.flags = Flags::from(data)
+    }
+
+    #[inline(always)]
+    pub fn set_b(&mut self, data: u8) {
+        self.rr[Self::B] = data
+    }
+
+    #[inline(always)]
+    pub fn set_c(&mut self, data: u8) {
+        self.rr[Self::C] = data
+    }
+
+    #[inline(always)]
+    pub fn set_d(&mut self, data: u8) {
+        self.rr[Self::D] = data
+    }
+
+    #[inline(always)]
+    pub fn set_e(&mut self, data: u8) {
+        self.rr[Self::E] = data
+    }
+
+    #[inline(always)]
+    pub fn set_h(&mut self, data: u8) {
+        self.rr[Self::H] = data
+    }
+
+    #[inline(always)]
+    pub fn set_l(&mut self, data: u8) {
+        self.rr[Self::L] = data
+    }
+
+    #[inline(always)]
+    pub fn set_af(&mut self, data: u16) {
+        let be_bytes = data.to_be_bytes();
+        self.set_a(be_bytes[0]);
+        self.set_f(be_bytes[1]);
+    }
+
+    #[inline(always)]
+    pub fn set_bc(&mut self, data: u16) {
+        let be_bytes = data.to_be_bytes();
+        self.set_b(be_bytes[0]);
+        self.set_c(be_bytes[1]);
+    }
+
+    #[inline(always)]
+    pub fn set_de(&mut self, data: u16) {
+        let be_bytes = data.to_be_bytes();
+        self.set_d(be_bytes[0]);
+        self.set_e(be_bytes[1]);
+    }
+
+    #[inline(always)]
+    pub fn set_hl(&mut self, data: u16) {
+        let be_bytes = data.to_be_bytes();
+        self.set_h(be_bytes[0]);
+        self.set_l(be_bytes[1]);
+    }
+
+    #[inline(always)]
+    pub fn set_sp(&mut self, data: u16) {
+        self.sp = data
+    }
+
+    #[inline(always)]
+    pub fn set_pc(&mut self, data: u16) {
+        self.pc = data
+    }
+
+    #[inline(always)]
+    pub fn carry(&self) -> bool {
+        self.alu8.flags.carry()
+    }
+
+    #[inline(always)]
+    pub fn half(&self) -> bool {
+        self.alu8.flags.half()
+    }
+
+    #[inline(always)]
+    pub fn sub(&self) -> bool {
+        self.alu8.flags.sub()
+    }
+
+    #[inline(always)]
+    pub fn zero(&self) -> bool {
+        self.alu8.flags.zero()
+    }
+
+    pub fn cycle(&mut self, mmu: &mut dyn Mmu) -> u64 {
+        let op_code = mmu.read_byte(self.pc);
+        let op_arg1 = mmu.read_byte(self.pc + 1);
+        let op_arg2 = mmu.read_byte(self.pc + 2);
+        let op_addr = u16::from_le_bytes([op_arg1, op_arg2]);
+
+        self.next_pc = self.pc + INSTRUCTION_SIZE[op_code as usize] as u16;
+        let ticks: u64 = INSTRUCTION_TICKS[op_code as usize].into();
+
+        match INSTRUCTION_SIZE[op_code as usize] {
             1 => {
-                println!("{0} ${1:04x}", INSTRUCTION_MNEMONIC[opcode as usize], self.pc)
+                println!("{0} ${1:04x}", INSTRUCTION_MNEMONIC[op_code as usize], self.pc)
             }
             2 => {
-                let param = format!("{0:02x}", mmu.read_byte(self.pc + 1));
-                let mnemonic = INSTRUCTION_MNEMONIC[opcode as usize].replace("$00", &param);
+                let param = format!("{0:02x}", op_arg1);
+                let mnemonic = INSTRUCTION_MNEMONIC[op_code as usize].replace("$00", &param);
                 println!("{0} ${1:04x}", mnemonic, self.pc)
             }
             3 => {
-                let param = format!("${1:02x}{0:02x}", mmu.read_byte(self.pc + 1), mmu.read_byte(self.pc + 2));
-                let mnemonic = INSTRUCTION_MNEMONIC[opcode as usize].replace("$0000", &param);
+                let param = format!("${0:04x}", op_addr);
+                let mnemonic = INSTRUCTION_MNEMONIC[op_code as usize].replace("$0000", &param);
                 println!("{0} ${1:04x}", mnemonic, self.pc)
             }
             _ => {
-                println!("{0} ${1:04x}", INSTRUCTION_MNEMONIC[opcode as usize], self.pc)
+                println!("{0} ${1:04x}", INSTRUCTION_MNEMONIC[op_code as usize], self.pc)
             }
         }
 
-        let mut next_pc = self.pc + INSTRUCTION_SIZE[opcode as usize] as u16;
+        self.execute(op_code, op_arg1, op_arg2, op_addr, mmu);
+        self.pc = self.next_pc;
+        ticks
+    }
 
-        match opcode {
+    fn execute(&mut self, op_code: u8, op_arg1: u8, op_arg2: u8, op_addr: u16, mmu: &mut dyn Mmu) {
+        match op_code {
             0x00 => {
                 // NOP
             }
             0x01 => {
                 // LD BC, $0000
-                self.b = mmu.read_byte(self.pc + 2);
-                self.c = mmu.read_byte(self.pc + 1);
+                self.set_bc(op_addr);
             }
             0x02 => {
                 // LD (BC), A
-                mmu.write_byte(self.bc(), self.a);
+                mmu.write_byte(self.bc(), self.a());
             },
             0x03 => {
                 // INC BC
-                increment_16bit_register(&mut self.b, &mut self.c);
+                self.inc16(Self::BC);
             }
             0x04 => {
                 // INC B
-                increment_8bit_register(&mut self.b, &mut self.f);
+                self.inc8(Self::B);
             }
             0x05 => {
                 // DEC B
-                decrement_8bit_register(&mut self.b, &mut self.f);
+                self.dec8(Self::B);
             }
             0x06 => {
                 // LD B, $00
-                self.b = mmu.read_byte(self.pc + 1);
+                self.set_b(op_arg1);
             }
             0x07 => {
                 // RLCA
-                rotate_left_and_store_carry(&mut self.a, &mut self.f);
+                self.rlc8(Self::A);
             }
             0x08 => {
                 // LD ($0000),SP
-                mmu.write_word(mmu.read_word(self.pc + 1), self.sp);
+                mmu.write_word(op_addr, self.sp);
             }
             0x09 => {
                 // ADD HL, BC
-                add_16bit_registers(&mut self.h, &mut self.l, self.b, self.c, &mut self.f);
+                let mut alu16 = ALU16::default();
+                alu16.acc = self.hl();
+                alu16.flags = self.alu8.flags;
+                alu16.add(self.bc());
+
+                self.set_hl(alu16.acc);
+                self.alu8.flags = alu16.flags;
             }
             0x0A => {
                 // LD A, (BC)
-                self.a = mmu.read_byte(self.bc());
+                self.set_a(self.deref_bc(mmu));
             }
             0x0B => {
                 // DEC BC
-                decrement_16bit_register(&mut self.b, &mut self.c);
+                self.dec16(Self::BC);
             }
             0x0C => {
                 // INC C
-                increment_8bit_register(&mut self.c, &mut self.f);
+                self.inc8(Self::C);
             }
             0x0D => {
                 // DEC C
-                decrement_8bit_register(&mut self.c, &mut self.f);
+                self.dec8(Self::C);
             }
             0x0E => {
                 // LD C, $00
-                self.c = mmu.read_byte(self.pc + 1);
+                self.set_c(op_arg1);
             }
             0x0F => {
                 // RRCA
-                rotate_right_and_store_carry(&mut self.a, &mut self.f);
+                self.rrc8(Self::A);
             }
             0x10 => {
                 // STOP 0
             }
             0x11 => {
                 // LD DE, $0000
-                self.e = mmu.read_byte(self.pc + 1);
-                self.d = mmu.read_byte(self.pc + 2);
+                self.set_d(op_arg2);
+                self.set_e(op_arg1);
             }
             0x12 => {
                 // LD (DE), A
-                mmu.write_byte(self.de(), self.a);
+                mmu.write_byte(self.de(), self.a());
             }
             0x13 => {
                 // INC DE
-                increment_16bit_register(&mut self.d, &mut self.e);
+                self.inc16(Self::DE);
             }
             0x14 => {
                 // INC D
-                increment_8bit_register(&mut self.d, &mut self.f);
+                self.inc8(Self::D);
             }
             0x15 => {
                 // DEC D
-                decrement_8bit_register(&mut self.d, &mut self.f);
+                self.dec8(Self::D);
             }
             0x16 => {
                 // LD D, $00
-                self.d = mmu.read_byte(self.pc + 1);
+                self.set_d(op_arg1);
             }
             0x17 => {
                 // RLA
-                rotate_left_through_carry(&mut self.a, &mut self.f);
+                self.rl8(Self::A);
             }
             0x18 => {
                 // JR $00
-                Self::relative_jump(&mut next_pc, mmu.read_byte(self.pc + 1));
+                self.relative_jump(op_arg1);
             }
             0x19 => {
                 // ADD HL, DE
-                add_16bit_registers(&mut self.h, &mut self.l, self.d, self.e, &mut self.f);
+                let mut alu16 = ALU16::default();
+                alu16.acc = self.hl();
+                alu16.flags = self.alu8.flags;
+                alu16.add(self.de());
+
+                self.set_hl(alu16.acc);
+                self.alu8.flags = alu16.flags;
             }
             0x1A => {
                 // LD A, (DE)
-                self.a = mmu.read_byte(self.de());
+                self.set_a(self.deref_de(mmu));
             }
             0x1B => {
                 // DEC DE
-                decrement_16bit_register(&mut self.d, &mut self.e);
+                self.dec16(Self::DE);
             }
             0x1C => {
                 // INC E
-                increment_8bit_register(&mut self.e, &mut self.f);
+                self.inc8(Self::E);
             }
             0x1D => {
                 // DEC E
-                decrement_8bit_register(&mut self.e, &mut self.f);
+                self.dec8(Self::E);
             }
             0x1E => {
                 // LD E, $00
-                self.e = mmu.read_byte(self.pc + 1);
+                self.set_e(op_arg1);
             }
             0x1F => {
                 // RRA
-                rotate_right_through_carry(&mut self.a, &mut self.f)
+                self.rr8(Self::A);
             }
             0x20 => {
                 // JR NZ $00
-                if Flags::from(self.f).contains(Flags::Z) == false {
-                    Self::relative_jump(&mut next_pc, mmu.read_byte(self.pc + 1));
+                if !self.zero() {
+                    self.relative_jump(op_arg1);
                 }
             }
             0x21 => {
                 // LD HL, $0000
-                self.l = mmu.read_byte(self.pc + 1);
-                self.h = mmu.read_byte(self.pc + 2);
+                self.set_hl(op_addr);
             }
             0x22 => {
                 // LDI (HL), A
-                mmu.write_byte(self.hl(), self.a);
-                increment_16bit_register(&mut self.h, &mut self.l)
+                let addr = self.hl();
+                let data = self.a();
+                mmu.write_byte(addr, data);
+                self.inc16(Self::HL);
             }
             0x23 => {
                 // INC HL
-                increment_16bit_register(&mut self.h, &mut self.l);
+                self.inc16(Self::HL);
             }
             0x24 => {
                 // INC H
-                increment_8bit_register(&mut self.h, &mut self.f);
+                self.inc8(Self::H);
             }
             0x25 => {
                 // DEC H
-                decrement_8bit_register(&mut self.h, &mut self.f);
+                self.dec8(Self::H);
             }
             0x26 => {
                 // LD H, $00
-                self.h = mmu.read_byte(self.pc + 1);
+                self.set_h(op_arg1);
             }
             0x27 => {
                 // DAA
-                decimal_adjust(&mut self.a, &mut self.f);
+                self.alu8.acc = self.a();
+                self.alu8.daa();
+                self.set_a(self.alu8.acc);
             }
             0x28 => {
                 // JR Z $00
-                if Flags::from(self.f).contains(Flags::Z) {
-                    Self::relative_jump(&mut next_pc, mmu.read_byte(self.pc + 1));
+                if self.zero() {
+                    self.relative_jump(op_arg1);
                 }
             }
             0x29 => {
                 // ADD HL, HL
-                let h = self.h;
-                let l = self.l;
-                add_16bit_registers(&mut self.h, &mut self.l, h, l, &mut self.f);
+                let hl = self.hl();
+
+                let mut alu16 = ALU16::default();
+                alu16.acc = hl;
+                alu16.flags = self.alu8.flags;
+                alu16.add(hl);
+
+                self.set_hl(alu16.acc);
+                self.alu8.flags = alu16.flags;
             }
             0x2A => {
                 // LDI A, (HL)
-                self.a = mmu.read_byte(self.hl());
-                increment_16bit_register(&mut self.h, &mut self.l);
+                let data = self.deref_hli(mmu);
+                self.set_a(data);
             }
             0x2B => {
                 // DEC HL
-                decrement_16bit_register(&mut self.h, &mut self.l);
+                self.dec16(Self::HL);
             }
             0x2C => {
                 // INC L
-                increment_8bit_register(&mut self.l, &mut self.f);
+                self.inc8(Self::L);
             }
             0x2D => {
                 // DEC L
-                decrement_8bit_register(&mut self.l, &mut self.f);
+                self.dec8(Self::L);
             }
             0x2E => {
                 // LD L, $00
-                self.l = mmu.read_byte(self.pc + 1);
+                self.set_l(op_arg1);
             }
             0x2F => {
                 // CPL
-                complement(&mut self.a, &mut self.f);
+                self.alu8.acc = self.a();
+                self.alu8.complement();
+                self.set_a(self.alu8.acc);
             }
             0x30 => {
                 // JR NC $00
-                if Flags::from(self.f).contains(Flags::C) == false {
-                    Self::relative_jump(&mut next_pc, mmu.read_byte(self.pc + 1));
+                if !self.carry() {
+                    self.relative_jump(op_arg1);
                 }
             }
             0x31 => {
@@ -612,8 +808,7 @@ impl Cpu {
             }
             0x32 => {
                 // LDD (HL), A
-                mmu.write_byte(self.hl(), self.a);
-                decrement_16bit_register(&mut self.h, &mut self.l);
+                mmu.write_byte(self.hl(), self.a());
             }
             0x33 => {
                 // INC SP
@@ -621,41 +816,44 @@ impl Cpu {
             }
             0x34 => {
                 // INC (HL)
-                let addr = self.hl();
-                let mut data = mmu.read_byte(addr);
-                increment_8bit_register(&mut data, &mut self.f);
-                mmu.write_byte(addr, data);
+                self.alu8.acc = self.deref_hl(mmu);
+                self.alu8.inc();
+                mmu.write_byte(self.hl(), self.alu8.acc);
             }
             0x35 => {
                 // DEC (HL)
-                let addr = self.hl();
-                let mut data = mmu.read_byte(addr);
-                decrement_8bit_register(&mut data, &mut self.f);
-                mmu.write_byte(addr, data);
+                self.alu8.acc = self.deref_hl(mmu);
+                self.alu8.dec();
+                mmu.write_byte(self.hl(), self.alu8.acc);
             }
             0x36 => {
                 // LD (HL), $00
-                mmu.write_byte(self.hl(), mmu.read_byte(self.pc + 1));
+                mmu.write_byte(self.hl(), op_arg1);
             }
             0x37 => {
                 // SCF
-                self.f |= Flags::C.bits();
+                self.alu8.flags.set_carry();
             }
             0x38 => {
                 // JR C $00
-                if Flags::from(self.f).contains(Flags::C) {
-                    Self::relative_jump(&mut next_pc, mmu.read_byte(self.pc + 1));
+                if self.carry() {
+                    self.relative_jump(op_arg1);
                 }
             }
             0x39 => {
                 // ADD HL, SP
-                let r = R16::from(self.sp);
-                add_16bit_registers(&mut self.h, &mut self.l, r.h, r.l, &mut self.f);
+                let mut alu16 = ALU16::default();
+                alu16.acc = self.hl();
+                alu16.flags = self.alu8.flags;
+                alu16.add(self.sp());
+
+                self.set_hl(alu16.acc);
+                self.alu8.flags = alu16.flags;
             }
             0x3A => {
                 // LDD A, (HL)
-                self.a = mmu.read_byte(self.hl());
-                decrement_16bit_register(&mut self.h, &mut self.l);
+                let data = self.deref_hld(mmu);
+                self.set_a(data);
             }
             0x3B => {
                 // DEC SP
@@ -663,596 +861,576 @@ impl Cpu {
             }
             0x3C => {
                 // INC A
-                increment_8bit_register(&mut self.a, &mut self.f);
+                self.inc8(Self::A);
             }
             0x3D => {
                 // DEC A
-                decrement_8bit_register(&mut self.a, &mut self.f);
+                self.dec8(Self::A);
             }
             0x3E => {
                 // LD A, $00
-                self.a = mmu.read_byte(self.pc + 1);
+                self.set_a(op_arg1);
             }
             0x3F => {
                 // CCF
-                self.f &= !Flags::C.bits();
+                self.alu8.flags.reset_carry();
             }
             0x40 => {
                 // LD B, B
             }
             0x41 => {
                 // LD B, C
-                self.b = self.c;
+                self.set_b(self.c());
             }
             0x42 => {
                 // LD B, D
-                self.b = self.d;
+                self.set_b(self.d());
             }
             0x43 => {
                 // LD B, E
-                self.b = self.e;
+                self.set_b(self.e());
             }
             0x44 => {
                 // LD B, H
-                self.b = self.h;
+                self.set_b(self.h());
             }
             0x45 => {
                 // LD B, L
-                self.b = self.l;
+                self.set_b(self.l());
             }
             0x46 => {
                 // LD B, (HL)
-                self.b = mmu.read_byte(self.hl());
+                self.set_b(self.deref_hl(mmu));
             }
             0x47 => {
                 // LD B, A
-                self.b = self.a;
+                self.set_b(self.a());
             }
             0x48 => {
                 // LD C, B
-                self.c = self.b;
+                self.set_c(self.b());
             }
             0x49 => {
                 // LD C, C
             }
             0x4A => {
                 // LD C, D
-                self.c = self.d;
+                self.set_c(self.d());
             }
             0x4B => {
                 // LD C, E
-                self.d = self.e;
+                self.set_c(self.e());
             }
             0x4C => {
                 // LD C, H
-                self.c = self.h;
+                self.set_c(self.h());
             }
             0x4D => {
                 // LD C, L
-                self.c = self.l;
+                self.set_c(self.l());
             }
             0x4E => {
                 // LD C, (HL)
-                self.c = mmu.read_byte(self.hl());
+                self.set_c(self.deref_hl(mmu));
             }
             0x4F => {
                 // LD C, A
-                self.c = self.a;
+                self.set_c(self.a());
             }
             0x50 => {
                 // LD D, B
-                self.d = self.b;
+                self.set_d(self.b());
             }
             0x51 => {
                 // LD D, C
-                self.d = self.c;
+                self.set_d(self.c());
             }
             0x52 => {
                 // LD D, D
             }
             0x53 => {
                 // LD D, E
-                self.d = self.e;
+                self.set_d(self.e());
             }
             0x54 => {
                 // LD D, H
-                self.d = self.h;
+                self.set_d(self.h());
             }
             0x55 => {
                 // LD D, L
-                self.d = self.l;
+                self.set_d(self.l());
             }
             0x56 => {
                 // LD D, (HL)
-                self.d = mmu.read_byte(self.hl());
+                self.set_d(self.deref_hl(mmu));
             }
             0x57 => {
                 // LD D, A
-                self.d = self.a;
+                self.set_d(self.a());
             }
             0x58 => {
                 // LD E, B
-                self.e = self.b;
+                self.set_e(self.b());
             }
             0x59 => {
                 // LD E, C
-                self.e = self.c;
+                self.set_e(self.c());
             }
             0x5A => {
                 // LD E, D
-                self.e = self.d;
+                self.set_e(self.d());
             }
             0x5B => {
                 // LD E, E
             }
             0x5C => {
                 // LD E, H
-                self.e = self.h;
+                self.set_e(self.h());
             }
             0x5D => {
                 // LD E, L
-                self.e = self.l;
+                self.set_e(self.l());
             }
             0x5E => {
                 // LD E, (HL)
-                self.e = mmu.read_byte(self.hl());
+                self.set_e(self.deref_hl(mmu));
             }
             0x5F => {
                 // LD E, A
-                self.e = self.a;
+                self.set_e(self.a());
             }
             0x60 => {
                 // LD H, B
-                self.h = self.b;
+                self.set_h(self.b());
             }
             0x61 => {
                 // LD H, C
-                self.h = self.c;
+                self.set_h(self.c());
             }
             0x62 => {
                 // LD H, D
-                self.h = self.d;
+                self.set_h(self.d());
             }
             0x63 => {
                 // LD H, E
-                self.h = self.e;
+                self.set_h(self.e());
             }
             0x64 => {
                 // LD H, H
             }
             0x65 => {
                 // LD H, L
-                self.h = self.l;
+                self.set_h(self.l());
             }
             0x66 => {
                 // LD H, (HL)
-                self.h = mmu.read_byte(self.hl());
+                self.set_h(self.deref_hl(mmu));
             }
             0x67 => {
                 // LD H, A
-                self.h = self.a;
+                self.set_h(self.a());
             }
             0x68 => {
                 // LD L, B
-                self.l = self.b;
+                self.set_l(self.b());
             }
             0x69 => {
                 // LD L, C
-                self.l = self.c;
+                self.set_l(self.c());
             }
             0x6A => {
                 // LD L, D
-                self.l = self.d;
+                self.set_l(self.d());
             }
             0x6B => {
                 // LD L, E
-                self.l = self.e;
+                self.set_l(self.e());
             }
             0x6C => {
                 // LD L, H
-                self.l = self.h;
+                self.set_l(self.h());
             }
             0x6D => {
                 // LD L, L
             }
             0x6E => {
                 // LD L, (HL)
-                self.l = mmu.read_byte(self.hl());
+                self.set_l(self.deref_hl(mmu));
             }
             0x6F => {
                 // LD L, A
-                self.l = self.a;
+                self.set_l(self.a());
             }
             0x70 => {
                 // LD (HL), B
-                mmu.write_byte(self.hl(), self.b);
+                mmu.write_byte(self.hl(), self.b());
             }
             0x71 => {
                 // LD (HL), C
-                mmu.write_byte(self.hl(), self.c);
+                mmu.write_byte(self.hl(), self.c());
             }
             0x72 => {
                 // LD (HL), D
-                mmu.write_byte(self.hl(), self.d);
+                mmu.write_byte(self.hl(), self.d());
             }
             0x73 => {
                 // LD (HL), E
-                mmu.write_byte(self.hl(), self.e);
+                mmu.write_byte(self.hl(), self.e());
             }
             0x74 => {
                 // LD (HL), H
-                mmu.write_byte(self.hl(), self.h);
+                mmu.write_byte(self.hl(), self.h());
             }
             0x75 => {
                 // LD (HL), L
-                mmu.write_byte(self.hl(), self.l);
+                mmu.write_byte(self.hl(), self.l());
             }
             0x76 => {
                 // LD (HL), (HL)
             }
             0x77 => {
                 // LD (HL), A
-                mmu.write_byte(self.hl(), self.a);
+                mmu.write_byte(self.hl(), self.a());
             }
             0x78 => {
                 // LD A, B
-                self.a = self.b;
+                self.set_a(self.b());
             }
             0x79 => {
                 // LD A, C
-                self.a = self.c;
+                self.set_a(self.c());
             }
             0x7A => {
                 // LD A, D
-                self.a = self.d;
+                self.set_a(self.d());
             }
             0x7B => {
                 // LD A, E
-                self.a = self.e;
+                self.set_a(self.e());
             }
             0x7C => {
                 // LD A, H
-                self.a = self.h;
+                self.set_a(self.h());
             }
             0x7D => {
                 // LD A, L
-                self.a = self.l;
+                self.set_a(self.l());
             }
             0x7E => {
                 // LD A, (HL)
-                self.a = mmu.read_byte(self.hl());
+                self.set_a(self.deref_hl(mmu));
             }
             0x7F => {
                 // LD A, A
             }
             0x80 => {
                 // ADD A, B
-                add_8bit_registers(&mut self.a, self.b, &mut self.f);
+                self.set_a(self.b());
             }
             0x81 => {
                 // ADD A, C
-                add_8bit_registers(&mut self.a, self.c, &mut self.f);
+                self.add8(self.c());
             }
             0x82 => {
                 // ADD A, D
-                add_8bit_registers(&mut self.a, self.d, &mut self.f);
+                self.add8(self.d());
             }
             0x83 => {
                 // ADD A, E
-                add_8bit_registers(&mut self.a, self.e, &mut self.f);
+                self.add8(self.e());
             }
             0x84 => {
                 // ADD A, H
-                add_8bit_registers(&mut self.a, self.h, &mut self.f);
+                self.add8(self.h());
             }
             0x85 => {
                 // ADD A, L
-                add_8bit_registers(&mut self.a, self.l, &mut self.f);
+                self.add8(self.l());
             }
             0x86 => {
                 // ADD A, (HL)
-                let r = mmu.read_byte(self.hl());
-                add_8bit_registers(&mut self.a, r, &mut self.f);
+                self.add8(self.deref_hl(mmu));
             }
             0x87 => {
                 // ADD A, A
-                let r = self.a;
-                add_8bit_registers(&mut self.a, r, &mut self.f);
+                self.add8(self.a());
             }
             0x88 => {
                 // ADC A, B
-                add_8bit_registers_with_carry(&mut self.a, self.b, &mut self.f)
+                self.adc8(self.b());
             }
             0x89 => {
                 // ADC A, C
-                add_8bit_registers_with_carry(&mut self.a, self.c, &mut self.f)
+                self.adc8(self.c());
             }
             0x8A => {
                 // ADC A, D
-                add_8bit_registers_with_carry(&mut self.a, self.d, &mut self.f)
+                self.adc8(self.d());
             }
             0x8B => {
                 // ADC A, E
-                add_8bit_registers_with_carry(&mut self.a, self.e, &mut self.f)
+                self.adc8(self.e());
             }
             0x8C => {
                 // ADC A, H
-                add_8bit_registers_with_carry(&mut self.a, self.h, &mut self.f)
+                self.adc8(self.h());
             }
             0x8D => {
                 // ADC A, L
-                add_8bit_registers_with_carry(&mut self.a, self.l, &mut self.f)
+                self.adc8(self.l());
             }
             0x8E => {
                 // ADC A, (HL)
-                let r = mmu.read_byte(self.hl());
-                add_8bit_registers_with_carry(&mut self.a, r, &mut self.f)
+                self.adc8(self.deref_hl(mmu));
             }
             0x8F => {
                 // ADC A, A
-                let r = self.a;
-                add_8bit_registers_with_carry(&mut self.a, r, &mut self.f)
+                self.adc8(self.a());
             }
             0x90 => {
                 // SUB A, B
-                sub_8bit_registers(&mut self.a, self.b, &mut self.f);
+                self.sub8(self.b());
             }
             0x91 => {
                 // SUB A, C
-                sub_8bit_registers(&mut self.a, self.c, &mut self.f);
+                self.sub8(self.c());
             }
             0x92 => {
                 // SUB A, D
-                sub_8bit_registers(&mut self.a, self.d, &mut self.f);
+                self.sub8(self.d());
             }
             0x93 => {
                 // SUB A, E
-                sub_8bit_registers(&mut self.a, self.e, &mut self.f);
+                self.sub8(self.e());
             }
             0x94 => {
                 // SUB A, H
-                sub_8bit_registers(&mut self.a, self.h, &mut self.f);
+                self.sub8(self.h());
             }
             0x95 => {
                 // SUB A, L
-                sub_8bit_registers(&mut self.a, self.l, &mut self.f);
+                self.sub8(self.l());
             }
             0x96 => {
                 // SUB A, (HL)
-                let r = mmu.read_byte(self.hl());
-                sub_8bit_registers(&mut self.a, r, &mut self.f);
+                self.sub8(self.deref_hl(mmu));
             }
             0x97 => {
                 // SUB A, A
-                let r = self.a;
-                sub_8bit_registers(&mut self.a, r, &mut self.f);
+                self.sub8(self.a());
             }
             0x98 => {
                 // SBC A, B
-                sub_8bit_registers_with_carry(&mut self.a, self.b, &mut self.f);
+                self.sbc8(self.b());
             }
             0x99 => {
                 // SBC A, C
-                sub_8bit_registers_with_carry(&mut self.a, self.c, &mut self.f);
+                self.sbc8(self.c());
             }
             0x9A => {
                 // SBC A, D
-                sub_8bit_registers_with_carry(&mut self.a, self.d, &mut self.f);
+                self.sbc8(self.d());
             }
             0x9B => {
                 // SBC A, E
-                sub_8bit_registers_with_carry(&mut self.a, self.e, &mut self.f);
+                self.sbc8(self.e());
             }
             0x9C => {
                 // SBC A, H
-                sub_8bit_registers_with_carry(&mut self.a, self.h, &mut self.f);
+                self.sbc8(self.h());
             }
             0x9D => {
                 // SBC A, L
-                sub_8bit_registers_with_carry(&mut self.a, self.l, &mut self.f);
+                self.sbc8(self.l());
             }
             0x9E => {
                 // SBC A, (HL)
-                let r = mmu.read_byte(self.hl());
-                sub_8bit_registers_with_carry(&mut self.a, r, &mut self.f);
+                self.sbc8(self.deref_hl(mmu));
             }
             0x9F => {
                 // SBC A, A
-                let r = self.a;
-                sub_8bit_registers_with_carry(&mut self.a, r, &mut self.f);
+                self.sbc8(self.a());
             }
             0xA0 => {
                 // AND A, B
-                and_8bit_registers(&mut self.a, self.b, &mut self.f);
+                self.and8(self.b());
             }
             0xA1 => {
                 // AND A, C
-                and_8bit_registers(&mut self.a, self.c, &mut self.f);
+                self.and8(self.c());
             }
             0xA2 => {
                 // AND A, D
-                and_8bit_registers(&mut self.a, self.d, &mut self.f);
+                self.and8(self.d());
             }
             0xA3 => {
                 // AND A, E
-                and_8bit_registers(&mut self.a, self.e, &mut self.f);
+                self.and8(self.e());
             }
             0xA4 => {
                 // AND A, H
-                and_8bit_registers(&mut self.a, self.h, &mut self.f);
+                self.and8(self.h());
             }
             0xA5 => {
                 // AND A, L
-                and_8bit_registers(&mut self.a, self.l, &mut self.f);
+                self.and8(self.l());
             }
             0xA6 => {
                 // AND A, (HL)
-                let r = mmu.read_byte(self.hl());
-                and_8bit_registers(&mut self.a, r, &mut self.f);
+                self.and8(self.deref_hl(mmu));
             }
             0xA7 => {
                 // AND A, A
-                let r = self.a;
-                and_8bit_registers(&mut self.a, r, &mut self.f);
+                self.and8(self.a());
             }
             0xA8 => {
                 // XOR A, B
-                xor_8bit_registers(&mut self.a, self.b, &mut self.f);
+                self.xor8(self.b());
             }
             0xA9 => {
                 // XOR A, C
-                xor_8bit_registers(&mut self.a, self.c, &mut self.f);
+                self.xor8(self.c());
             }
             0xAA => {
                 // XOR A, D
-                xor_8bit_registers(&mut self.a, self.d, &mut self.f);
+                self.xor8(self.d());
             }
             0xAB => {
                 // XOR A, E
-                xor_8bit_registers(&mut self.a, self.e, &mut self.f);
+                self.xor8(self.e());
             }
             0xAC => {
                 // XOR A, H
-                xor_8bit_registers(&mut self.a, self.h, &mut self.f);
+                self.xor8(self.h());
             }
             0xAD => {
                 // XOR A, L
-                xor_8bit_registers(&mut self.a, self.l, &mut self.f);
+                self.xor8(self.l());
             }
             0xAE => {
                 // XOR A, (HL)
-                let r = mmu.read_byte(self.hl());
-                xor_8bit_registers(&mut self.a, r, &mut self.f);
+                self.xor8(self.deref_hl(mmu));
             }
             0xAF => {
                 // XOR A, A
-                let r = self.a;
-                xor_8bit_registers(&mut self.a, r, &mut self.f);
+                self.xor8(self.a());
             }
             0xB0 => {
                 // OR A, B
-                or_8bit_registers(&mut self.a, self.b, &mut self.f);
+                self.or8(self.b());
             }
             0xB1 => {
                 // OR A, C
-                or_8bit_registers(&mut self.a, self.c, &mut self.f);
+                self.or8(self.c());
             }
             0xB2 => {
                 // OR A, D
-                or_8bit_registers(&mut self.a, self.d, &mut self.f);
+                self.or8(self.d());
             }
             0xB3 => {
                 // OR A, E
-                or_8bit_registers(&mut self.a, self.e, &mut self.f);
+                self.or8(self.e());
             }
             0xB4 => {
                 // OR A, H
-                or_8bit_registers(&mut self.a, self.h, &mut self.f);
+                self.or8(self.h());
             }
             0xB5 => {
                 // OR A, L
-                or_8bit_registers(&mut self.a, self.l, &mut self.f);
+                self.or8(self.l());
             }
             0xB6 => {
                 // OR A, (HL)
-                let r = mmu.read_byte(self.hl());
-                or_8bit_registers(&mut self.a, r, &mut self.f);
+                self.or8(self.deref_hl(mmu));
             }
             0xB7 => {
                 // OR A, A
-                let r = self.a;
-                or_8bit_registers(&mut self.a, r, &mut self.f);
+                self.or8(self.a());
             }
             0xB8 => {
                 // CP A, B
-                compare_8bit_registers(self.a, self.b, &mut self.f);
+                self.cp8(self.b());
             }
             0xB9 => {
                 // CP A, C
-                compare_8bit_registers(self.a, self.c, &mut self.f);
+                self.cp8(self.c());
             }
             0xBA => {
                 // CP A, D
-                compare_8bit_registers(self.a, self.d, &mut self.f);
+                self.cp8(self.d());
             }
             0xBB => {
                 // CP A, E
-                compare_8bit_registers(self.a, self.e, &mut self.f);
+                self.cp8(self.e());
             }
             0xBC => {
                 // CP A, H
-                compare_8bit_registers(self.a, self.h, &mut self.f);
+                self.cp8(self.h());
             }
             0xBD => {
                 // CP A, L
-                compare_8bit_registers(self.a, self.l, &mut self.f);
+                self.cp8(self.l());
             }
             0xBE => {
                 // CP A, (HL)
-                let r = mmu.read_byte(self.hl());
-                compare_8bit_registers(self.a, r, &mut self.f);
+                self.cp8(self.deref_hl(mmu));
             }
             0xBF => {
                 // CP A, A
-                compare_8bit_registers(self.a, self.a, &mut self.f);
+                self.cp8(self.a());
             }
             0xC0 => {
                 // RET NZ
-                if Flags::from(self.f).contains(Flags::Z) == false {
-                    self.return_call(&mut next_pc, mmu);
+                if !self.zero() {
+                    self.end_call(mmu);
                 }
             }
             0xC1 => {
                 // POP BC
-                let mut rh = self.b;
-                let mut rl = self.c;
-                self.stack_pop(&mut rh, &mut rl, mmu);
-                self.b = rh;
-                self.c = rl;
+                self.pop_r16(Self::BC, mmu);
             }
             0xC2 => {
                 // JP NZ $0000
-                if Flags::from(self.f).contains(Flags::Z) == false {
-                    next_pc = mmu.read_word(self.pc + 1);
+                if !self.zero() {
+                    self.absolute_jump(op_addr);
                 }
             }
             0xC3 => {
                 // JP $0000
-                next_pc = mmu.read_word(self.pc + 1);
+                self.absolute_jump(op_addr);
             }
             0xC4 => {
                 // CALL NZ $0000
-                if Flags::from(self.f).contains(Flags::Z) == false {
-                    self.process_call(&mut next_pc, mmu)
+                if !self.zero() {
+                    self.begin_call(op_addr, mmu)
                 }
             }
             0xC5 => {
                 // PUSH BC
-                self.stack_push(self.b, self.c, mmu);
+                self.push_r16(Self::BC, mmu);
             }
             0xC6 => {
                 // ADD A, $00
-                let r = mmu.read_byte(self.pc + 1);
-                add_8bit_registers(&mut self.a, r, &mut self.f);
+                self.add8(op_arg1);
             }
             0xC7 => {
                 // RST $00
-                self.restart(&mut next_pc, 0x00, mmu);
+                self.begin_call(0x00, mmu);
             }
             0xC8 => {
                 // RET Z
-                if Flags::from(self.f).contains(Flags::Z) {
-                    self.return_call(&mut next_pc, mmu);
+                if self.zero() {
+                    self.end_call(mmu);
                 }
             }
             0xC9 => {
                 // RET
-                self.return_call(&mut next_pc, mmu);
+                self.end_call(mmu);
             }
             0xCA => {
                 // JP Z $0000
-                if Flags::from(self.f).contains(Flags::Z) {
-                    next_pc = mmu.read_word(self.pc + 1);
+                if self.zero() {
+                    self.absolute_jump(op_addr);
                 }
             }
             0xCB => {
@@ -1260,41 +1438,36 @@ impl Cpu {
             }
             0xCC => {
                 // CALL Z $0000
-                if Flags::from(self.f).contains(Flags::Z) {
-                    self.process_call(&mut next_pc, mmu)
+                if self.zero() {
+                    self.begin_call(op_addr, mmu)
                 }
             }
             0xCD => {
                 // CALL $0000
-                self.process_call(&mut next_pc, mmu)
+                self.begin_call(op_addr, mmu)
             }
             0xCE => {
-                // ADC A, $$00
-                let r = mmu.read_byte(self.pc + 1);
-                add_8bit_registers_with_carry(&mut self.a, r, &mut self.f);
+                // ADC A, $00
+                self.adc8(op_arg1);
             }
             0xCF => {
                 // RST $08
-                self.restart(&mut next_pc, 0x08, mmu);
+                self.begin_call(0x08, mmu);
             }
             0xD0 => {
                 // RET NC
-                if Flags::from(self.f).contains(Flags::C) == false {
-                    self.return_call(&mut next_pc, mmu);
+                if !self.carry() {
+                    self.end_call(mmu);
                 }
             }
             0xD1 => {
                 // POP DE
-                let mut rh = self.d;
-                let mut rl = self.e;
-                self.stack_pop(&mut rh, &mut rl, mmu);
-                self.d = rh;
-                self.e = rl;
+                self.pop_r16(Self::DE, mmu);
             }
             0xD2 => {
                 // JP NC $0000
-                if Flags::from(self.f).contains(Flags::C) == false {
-                    next_pc = mmu.read_word(self.pc + 1);
+                if !self.carry() {
+                    self.absolute_jump(op_addr);
                 }
             }
             0xD3 => {
@@ -1302,38 +1475,37 @@ impl Cpu {
             }
             0xD4 => {
                 // CALL NC $0000
-                if Flags::from(self.f).contains(Flags::C) == false {
-                    self.process_call(&mut next_pc, mmu)
+                if !self.carry() {
+                    self.begin_call(op_addr, mmu)
                 }
             }
             0xD5 => {
                 // PUSH DE
-                self.stack_push(self.d, self.e, mmu);
+                self.push_r16(Self::DE, mmu)
             }
             0xD6 => {
-                // SUB A, $$00
-                let r = mmu.read_byte(self.pc + 1);
-                sub_8bit_registers(&mut self.a, r, &mut self.f);
+                // SUB A, $00
+                self.sub8(op_arg1);
             }
             0xD7 => {
                 // RST $10
-                self.restart(&mut next_pc, 0x10, mmu);
+                self.begin_call(0x10, mmu);
             }
             0xD8 => {
                 // RET C
-                if Flags::from(self.f).contains(Flags::C) {
-                    self.return_call(&mut next_pc, mmu);
+                if self.carry() {
+                    self.end_call(mmu);
                 }
             }
             0xD9 => {
                 // RETI
-                self.return_call(&mut next_pc, mmu);
-                self.ie_flag = true;
+                self.end_call(mmu);
+                self.int_enable = true;
             }
             0xDA => {
                 // JP C $0000
-                if Flags::from(self.f).contains(Flags::C) {
-                    next_pc = mmu.read_word(self.pc + 1);
+                if self.carry() {
+                    self.absolute_jump(op_addr);
                 }
             }
             0xDB => {
@@ -1341,8 +1513,8 @@ impl Cpu {
             }
             0xDC => {
                 // CALL C $0000
-                if Flags::from(self.f).contains(Flags::C) {
-                    self.process_call(&mut next_pc, mmu)
+                if self.carry() {
+                    self.begin_call(op_addr, mmu)
                 }
             }
             0xDD => {
@@ -1350,28 +1522,27 @@ impl Cpu {
             }
             0xDE => {
                 // SBC A, $00
-                let r = mmu.read_byte(self.pc + 1);
-                sub_8bit_registers_with_carry(&mut self.a, r, &mut self.f);
+                self.sbc8(op_arg1);
             }
             0xDF => {
                 // RST $18
-                self.restart(&mut next_pc, 0x0018, mmu);
+                self.begin_call(0x18, mmu);
             }
             0xE0 => {
                 // LDH ($00), A
-                let addr: u16 = 0xff00 + mmu.read_byte(self.pc + 1) as u16;
-                mmu.write_byte(addr, self.a);
+                let addr: u16 = 0xff00u16 | op_arg1 as u16;
+                let data = self.a();
+                mmu.write_byte(addr, data);
             }
             0xE1 => {
                 // POP HL
-                let mut rh = self.h;
-                let mut rl = self.l;
-                self.stack_pop(&mut rh, &mut rl, mmu);
-                self.h = rh;
-                self.l = rl;
+                self.pop_r16(Self::HL, mmu);
             }
             0xE2 => {
                 // LDH (C), A
+                let addr = 0xff00u16 | self.c() as u16;
+                let data = self.a();
+                mmu.write_byte(addr, data);
             }
             0xE3 => {
                 // [E3] - INVALID
@@ -1381,31 +1552,33 @@ impl Cpu {
             }
             0xE5 => {
                 // PUSH HL
-                self.stack_push(self.h, self.l, mmu);
+                self.push_r16(Self::HL, mmu);
             }
             0xE6 => {
                 // AND $00
-                let r = mmu.read_byte(self.pc + 1);
-                and_8bit_registers(&mut self.a, r, &mut self.f);
+                self.and8(op_arg1);
             }
             0xE7 => {
                 // RST $20
-                self.restart(&mut next_pc, 0x0020, mmu);
+                self.begin_call(0x20, mmu);
             }
             0xE8 => {
                 // ADD SP, $00
-                let mut r1 = R16::from(self.sp);
-                let r2 = R16::from(mmu.read_byte(self.pc + 1) as u16);
-                add_16bit_registers(&mut r1.l, &mut r1.h, r2.h, r2.l, &mut self.f);
+                let mut alu16 = ALU16::default();
+                alu16.acc = self.sp();
+                alu16.flags = self.alu8.flags;
+                alu16.add(((op_arg1 as i8) as i16) as u16);
+
+                self.set_sp(alu16.acc);
+                self.alu8.flags = alu16.flags;
             }
             0xE9 => {
                 // JP HL
-                next_pc = self.hl();
+                self.absolute_jump(self.hl());
             }
             0xEA => {
                 // LD ($0000), A
-                let addr = mmu.read_word(self.pc + 1);
-                mmu.write_byte(addr, self.a);
+                mmu.write_byte(op_addr, self.a());
             }
             0xEB => {
                 // [EB] - INVALID
@@ -1418,74 +1591,64 @@ impl Cpu {
             }
             0xEE => {
                 // XOR $00
-                let r = mmu.read_byte(self.pc + 1);
-                xor_8bit_registers(&mut self.a, r, &mut self.f);
+                self.xor8(op_arg1);
             }
             0xEF => {
                 // RST $28
-                self.restart(&mut next_pc, 0x0028, mmu);
+                self.begin_call(0x28, mmu);
             }
             0xF0 => {
                 // LDH A, ($00)
-                let addr: u16 = 0xff00 + mmu.read_byte(self.pc + 1) as u16;
-                self.a = mmu.read_byte(addr);
+                let addr: u16 = 0xff00u16 | op_arg1 as u16;
+                let data = mmu.read_byte(addr);
+                self.set_a(data);
             }
             0xF1 => {
                 // POP AF
-                let mut rh = self.a;
-                let mut rl = self.f;
-                self.stack_pop(&mut rh, &mut rl, mmu);
-                self.a = rh;
-                self.f = rl;
+                self.pop_af(mmu);
             }
             0xF2 => {
                 // LD A, ($FF00+C)
-                self.a = mmu.read_byte(0xff00u16 | self.c as u16);
+                let addr = 0xff00u16 | self.c() as u16;
+                let data = mmu.read_byte(addr);
+                self.set_a(data);
             }
             0xF3 => {
                 // DI
-                self.ie_flag = false;
+                self.int_enable = false;
             }
             0xF4 => {
                 // [F4] - INVALID
             }
             0xF5 => {
                 // PUSH AF
-                self.stack_push(self.a, self.f, mmu);
+                self.push_af(mmu);
             }
             0xF6 => {
                 // OR $00
-                let r = mmu.read_byte(self.pc + 1);
-                or_8bit_registers(&mut self.a, r, &mut self.f);
+                self.or8(op_arg1);
             }
             0xF7 => {
                 // RST $30
-                self.restart(&mut next_pc, 0x30, mmu);
+                self.begin_call(0x30, mmu);
             }
             0xF8 => {
                 // LD HL,SP+$00
-                let offset = mmu.read_byte(self.pc + 1) as i8;
-
-                let r = if offset >= 0 {
-                    R16::from(self.sp.wrapping_add(offset as u16))
-                } else {
-                    R16::from(self.sp.wrapping_sub((-offset) as u16))
-                };
-
-                self.h = r.h;
-                self.l = r.l;
+                let addr = self.sp().wrapping_add((op_arg1 as i8) as u16);
+                self.set_hl(addr);
             }
             0xF9 => {
                 // LD SP, HL
-                self.sp = self.hl();
+                self.set_sp(self.hl());
             }
             0xFA => {
                 // LD A, ($0000)
-                self.a = mmu.read_byte(mmu.read_word(self.pc + 1));
+                let data = mmu.read_byte(op_addr);
+                self.set_a(data);
             }
             0xFB => {
                 // EI
-                self.ie_flag = true;
+                self.int_enable = true;
             }
             0xFC => {
                 // [FC] - INVALID;
@@ -1495,55 +1658,225 @@ impl Cpu {
             }
             0xFE => {
                 // CP $00
-                let r = mmu.read_byte(self.pc + 1);
-                compare_8bit_registers(self.a, r, &mut self.f);
+                self.cp8(op_arg1);
             }
             0xFF => {
                 // RST $38
-                self.restart(&mut next_pc, 0x38, mmu);
+                self.begin_call(0x38, mmu);
             }
         }
-        self.pc = next_pc;
-        INSTRUCTION_TICKS[opcode as usize].into()
     }
 
-    fn stack_push(&mut self, h: u8, l: u8, mmu: &mut dyn Mmu) {
-        mmu.write_byte(self.sp, h);
+
+    fn add8(&mut self, arg: u8) {
+        self.alu8.acc = self.rr[Self::A];
+        self.alu8.add(arg);
+        self.rr[Self::A] = self.alu8.acc;
+    }
+
+    fn adc8(&mut self, arg: u8) {
+        self.alu8.acc = self.rr[Self::A];
+        self.alu8.adc(arg);
+        self.rr[Self::A] = self.alu8.acc;
+    }
+
+    fn sub8(&mut self, arg: u8) {
+        self.alu8.acc = self.rr[Self::A];
+        self.alu8.sub(arg);
+        self.rr[Self::A] = self.alu8.acc;
+    }
+
+    fn sbc8(&mut self, arg: u8) {
+        self.alu8.acc = self.rr[Self::A];
+        self.alu8.sbc(arg);
+        self.rr[Self::A] = self.alu8.acc;
+    }
+
+    fn and8(&mut self, arg: u8) {
+        self.alu8.acc = self.rr[Self::A];
+        self.alu8.and(arg);
+        self.rr[Self::A] = self.alu8.acc;
+    }
+
+    fn or8(&mut self, arg: u8) {
+        self.alu8.acc = self.rr[Self::A];
+        self.alu8.or(arg);
+        self.rr[Self::A] = self.alu8.acc;
+    }
+
+    fn xor8(&mut self, arg: u8) {
+        self.alu8.acc = self.rr[Self::A];
+        self.alu8.xor(arg);
+        self.rr[Self::A] = self.alu8.acc;
+    }
+
+    fn inc8(&mut self, r_index: usize) {
+        self.alu8.acc = self.rr[r_index];
+        self.alu8.inc();
+        self.rr[r_index] = self.alu8.acc;
+    }
+
+    fn dec8(&mut self, r_index: usize) {
+        self.alu8.acc = self.rr[r_index];
+        self.alu8.dec();
+        self.rr[r_index] = self.alu8.acc;
+    }
+
+    fn inc16(&mut self, r_index: usize) {
+        assert!(r_index & 0x01 != 0);
+        let mut h = self.rr[r_index];
+        let mut l = self.rr[r_index + 1];
+
+        l = l.wrapping_add(1);
+        if l == 0 {
+            h = h.wrapping_add(1);
+        }
+
+        self.rr[r_index] = h;
+        self.rr[r_index + 1] = l;
+    }
+
+    fn dec16(&mut self, r_index: usize) {
+        assert!(r_index & 0x01 != 0 && r_index > Self::A && r_index <= Self::L);
+        let mut h = self.rr[r_index];
+        let mut l = self.rr[r_index + 1];
+
+        if l == 0 {
+            h = h.wrapping_sub(1);
+        }
+        l = l.wrapping_sub(1);
+
+        self.rr[r_index] = h;
+        self.rr[r_index + 1] = l;
+    }
+
+    fn rlc8(&mut self, r_index: usize) {
+        self.alu8.acc = self.rr[r_index];
+        self.alu8.rlc();
+        self.rr[r_index] = self.alu8.acc;
+    }
+
+    fn rrc8(&mut self, r_index: usize) {
+        self.alu8.acc = self.rr[r_index];
+        self.alu8.rrc();
+        self.rr[r_index] = self.alu8.acc;
+    }
+
+    fn rl8(&mut self, r_index: usize) {
+        self.alu8.acc = self.rr[r_index];
+        self.alu8.rl();
+        self.rr[r_index] = self.alu8.acc;
+    }
+
+    fn rr8(&mut self, r_index: usize) {
+        self.alu8.acc = self.rr[r_index];
+        self.alu8.rr();
+        self.rr[r_index] = self.alu8.acc;
+    }
+
+    fn cp8(&mut self, arg: u8) {
+        self.alu8.acc = self.rr[Self::A];
+        self.alu8.compare(arg);
+        self.rr[Self::A] = self.alu8.acc;
+    }
+
+    fn deref_bc(&self, mmu: &mut dyn Mmu) -> u8 {
+        mmu.read_byte(self.bc())
+    }
+
+    fn deref_de(&self, mmu: &mut dyn Mmu) -> u8 {
+        mmu.read_byte(self.de())
+    }
+
+    fn deref_hl(&self, mmu: &mut dyn Mmu) -> u8 {
+        mmu.read_byte(self.hl())
+    }
+
+    fn deref_hli(&mut self, mmu: &mut dyn Mmu) -> u8 {
+        let ret = self.deref_hl(mmu);
+        self.inc16(Self::HL);
+        ret
+    }
+
+    fn deref_hld(&mut self, mmu: &mut dyn Mmu) -> u8 {
+        let ret = self.deref_hl(mmu);
+        self.dec16(Self::HL);
+        ret
+    }
+
+    fn push_r16(&mut self, r_index: usize, mmu: &mut dyn Mmu) {
+        let h: u8 = self.rr[r_index + 0];
+        let l: u8 = self.rr[r_index + 1];
+        self.push_nn(h, l, mmu);
+    }
+
+    fn push_af(&mut self, mmu: &mut dyn Mmu) {
+        let h: u8 = self.a();
+        let l: u8 = self.alu8.flags.into();
+        self.push_nn(h, l, mmu);
+    }
+
+    fn push_sp(&mut self, mmu: &mut dyn Mmu) {
+        let h = (self.sp.wrapping_shl(8) & 0xff) as u8;
+        let l = (self.sp & 0xff) as u8;
+        self.push_nn(h, l, mmu);
+    }
+
+    fn push_nn(&mut self, h: u8, l: u8, mmu: &mut dyn Mmu) {
+        mmu.write_byte(self.sp - 0, h);
         mmu.write_byte(self.sp - 1, l);
+
         self.sp = self.sp - 2;
     }
 
-    fn stack_pop(&mut self, h: &mut u8, l: &mut u8, mmu: &mut dyn Mmu) {
-        *l = mmu.read_byte(self.sp + 1);
-        *h = mmu.read_byte(self.sp + 2);
+    fn pop_af(&mut self, mmu: &mut dyn Mmu) {
+        let (h, l) = self.pop_nn(mmu);
+        self.rr[Self::A] = h;
+        self.alu8.flags = Flags::from(l);
+    }
+
+    fn pop_sp(&mut self, mmu: &mut dyn Mmu) {
+        let (h, l) = self.pop_nn(mmu);
+        self.sp = (h as u16) << 8 | l as u16;
+    }
+
+    fn pop_r16(&mut self, r_index: usize, mmu: &mut dyn Mmu) {
+        let (h, l) = self.pop_nn(mmu);
+        self.rr[r_index + 0] = h;
+        self.rr[r_index + 1] = l;
+    }
+
+    fn pop_nn(&mut self, mmu: &mut dyn Mmu) -> (u8, u8) {
+        let l = mmu.read_byte(self.sp + 1);
+        let h = mmu.read_byte(self.sp + 2);
         self.sp = self.sp + 2;
+        (h, l)
     }
 
-    fn relative_jump(pc: &mut u16, param: u8) {
-        let offset = param as i8;
-        if offset >= 0 {
-            *pc = pc.wrapping_add(offset as u16);
-        } else {
-            *pc = pc.wrapping_sub((-offset) as u16);
-        }
+    fn absolute_jump(&mut self, addr: u16) {
+        self.next_pc = addr;
     }
 
-    fn restart(&mut self, pc: &mut u16, rst_addr: u16, mmu: &mut dyn Mmu) {
-        let ret_addr = R16::from(*pc);
-        self.stack_push(ret_addr.h, ret_addr.l, mmu);
-        *pc = rst_addr;
+    fn relative_jump(&mut self, offset: u8) {
+        self.next_pc = self.next_pc.wrapping_add((offset as i8) as u16)
     }
 
-    fn process_call(&mut self, pc: &mut u16, mmu: &mut dyn Mmu) {
-        let ret_addr = R16::from(*pc);
-        self.stack_push(ret_addr.h, ret_addr.l, mmu);
-        *pc = mmu.read_word(self.pc +1);
+    fn begin_call(&mut self, call_addr: u16, mmu: &mut dyn Mmu) {
+        let ret_addr_bytes = self.next_pc.to_be_bytes();
+        self.push_nn(ret_addr_bytes[0], ret_addr_bytes[1], mmu);
+        self.next_pc = call_addr;
     }
 
-    fn return_call(&mut self, pc: &mut u16, mmu: &mut dyn Mmu) {
-        let mut ret_addr = R16::zero();
-        self.stack_pop(&mut ret_addr.h, &mut ret_addr.l, mmu);
-        *pc = ret_addr.into();
+    fn end_call(&mut self, mmu: &mut dyn Mmu) {
+        let (l, h) = self.pop_nn(mmu);
+        self.next_pc = u16::from_be_bytes([l, h]);
     }
 }
 
+#[test]
+fn unsigned_signed_test() {
+    let offset: i8 = -1;
+    let address: u16 = 0xff01;
+
+    assert_eq!(0xff00u16, address.wrapping_add(offset as u16));
+}

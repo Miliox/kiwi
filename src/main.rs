@@ -1,7 +1,9 @@
 #[macro_use]
 extern crate bitflags;
 
-mod alu;
+mod flags;
+mod alu8;
+mod alu16;
 mod bios;
 mod board;
 mod cart;
