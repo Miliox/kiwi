@@ -16,9 +16,7 @@ fn main() {
     let mut board = MainBoard::default();
     board.open("/Users/emiliano/Downloads/Tetris/Tetris.gb");
     board.print_cartridge_info();
-    board.step();
-    board.step();
-    board.step();
-    board.step();
-    board.step();
+    for _ in 0..100 {
+        board.step();
+    }
 }
