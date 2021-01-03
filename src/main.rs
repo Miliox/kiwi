@@ -1,12 +1,11 @@
 #[macro_use]
 extern crate bitflags;
 
-mod flags;
-mod alu8;
-mod alu16;
+mod cpu;
+
 mod bios;
 mod cart;
-mod cpu;
+
 mod gpu;
 mod mmu;
 mod mainboard;

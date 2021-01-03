@@ -1,4 +1,4 @@
-use crate::flags::Flags;
+use super::flags::Flags;
 use std::ops::RangeInclusive;
 
 #[derive(Default)]

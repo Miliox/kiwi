@@ -1,4 +1,4 @@
-use crate::flags::Flags;
+use super::flags::Flags;
 
 #[derive(Default)]
 /// Gameboy (LR35902) 8 Bit Arithmetic Logic Unit
