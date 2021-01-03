@@ -423,7 +423,7 @@ impl ALU8 {
 
     /// Decimal Adjust acc to obtain the bcd representation
     ///
-    /// - Z: Set if register acc is zero.
+    /// - Z: Set if register acc is zero. 
     /// - N: Not affected.
     /// - H: Reset.
     /// - C: Set or reset according to operation.

@@ -1,7 +1,11 @@
-use crate::mmu::Mmu;
 use crate::alu8::ALU8;
 use crate::alu16::ALU16;
 use crate::flags::Flags;
+use crate::mmu::Mmu;
+use crate::mmu::Memory;
+
+use std::rc::Rc;
+use std::cell::RefCell;
 
 #[allow(dead_code)]
 #[derive(Default)]
@@ -12,9 +16,11 @@ pub struct Cpu {
     pc : u16,      // program counter register
     next_pc: u16,  // next program counter position
 
-    clock: u64,    // accumulated clock counter
+    clock: u64,       // accumulated clock counter
     int_enable: bool, // interrupt enable flag
     int_flags:  u8,   // interrupt flags flag
+
+    pub mmu: Option<Rc<RefCell<Mmu>>>, // Reference to Memory Management Unit
 }
 
 const INSTRUCTION_SIZE: [u8; 256] = [
@@ -538,10 +544,18 @@ impl Cpu {
         self.alu8.flags.zero()
     }
 
-    pub fn cycle(&mut self, mmu: &mut dyn Mmu) -> u64 {
-        let op_code = mmu.read_byte(self.pc);
-        let op_arg1 = mmu.read_byte(self.pc + 1);
-        let op_arg2 = mmu.read_byte(self.pc + 2);
+    pub fn read_byte(&self, addr: u16) -> u8 {
+        self.mmu.as_ref().unwrap().borrow().read_byte(addr)
+    }
+
+    pub fn write_byte(&mut self, addr: u16, data: u8) {
+        self.mmu.as_ref().unwrap().borrow_mut().write_byte(addr, data);
+    }
+
+    pub fn cycle(&mut self) -> u64 {
+        let op_code = self.read_byte(self.pc);
+        let op_arg1 = self.read_byte(self.pc + 1);
+        let op_arg2 = self.read_byte(self.pc + 2);
         let op_addr = u16::from_le_bytes([op_arg1, op_arg2]);
 
         self.next_pc = self.pc + INSTRUCTION_SIZE[op_code as usize] as u16;
@@ -566,12 +580,12 @@ impl Cpu {
             }
         }
 
-        self.execute(op_code, op_arg1, op_arg2, op_addr, mmu);
+        self.execute(op_code, op_arg1, op_arg2, op_addr);
         self.pc = self.next_pc;
         ticks
     }
 
-    fn execute(&mut self, op_code: u8, op_arg1: u8, op_arg2: u8, op_addr: u16, mmu: &mut dyn Mmu) {
+    fn execute(&mut self, op_code: u8, op_arg1: u8, op_arg2: u8, op_addr: u16) {
         match op_code {
             0x00 => {
                 // NOP
@@ -582,7 +596,7 @@ impl Cpu {
             }
             0x02 => {
                 // LD (BC), A
-                mmu.write_byte(self.bc(), self.a());
+                self.write_byte(self.bc(), self.a());
             },
             0x03 => {
                 // INC BC
@@ -606,7 +620,9 @@ impl Cpu {
             }
             0x08 => {
                 // LD ($0000),SP
-                mmu.write_word(op_addr, self.sp);
+                let le_bytes = self.sp.to_le_bytes();
+                self.write_byte(op_addr, le_bytes[0]);
+                self.write_byte(op_addr + 1, le_bytes[1]);
             }
             0x09 => {
                 // ADD HL, BC
@@ -620,7 +636,8 @@ impl Cpu {
             }
             0x0A => {
                 // LD A, (BC)
-                self.set_a(self.deref_bc(mmu));
+                let data = self.deref_bc();
+                self.set_a(data);
             }
             0x0B => {
                 // DEC BC
@@ -652,7 +669,7 @@ impl Cpu {
             }
             0x12 => {
                 // LD (DE), A
-                mmu.write_byte(self.de(), self.a());
+                self.write_byte(self.de(), self.a());
             }
             0x13 => {
                 // INC DE
@@ -690,7 +707,7 @@ impl Cpu {
             }
             0x1A => {
                 // LD A, (DE)
-                self.set_a(self.deref_de(mmu));
+                self.set_a(self.deref_de());
             }
             0x1B => {
                 // DEC DE
@@ -726,7 +743,7 @@ impl Cpu {
                 // LDI (HL), A
                 let addr = self.hl();
                 let data = self.a();
-                mmu.write_byte(addr, data);
+                self.write_byte(addr, data);
                 self.inc16(Self::HL);
             }
             0x23 => {
@@ -771,7 +788,7 @@ impl Cpu {
             }
             0x2A => {
                 // LDI A, (HL)
-                let data = self.deref_hli(mmu);
+                let data = self.deref_hli();
                 self.set_a(data);
             }
             0x2B => {
@@ -804,11 +821,11 @@ impl Cpu {
             }
             0x31 => {
                 // LD SP, $0000
-                self.sp = mmu.read_word(self.pc + 1);
+                self.sp = op_addr;
             }
             0x32 => {
                 // LDD (HL), A
-                mmu.write_byte(self.hl(), self.a());
+                self.write_byte(self.hl(), self.a());
             }
             0x33 => {
                 // INC SP
@@ -816,19 +833,19 @@ impl Cpu {
             }
             0x34 => {
                 // INC (HL)
-                self.alu8.acc = self.deref_hl(mmu);
+                self.alu8.acc = self.deref_hl();
                 self.alu8.inc();
-                mmu.write_byte(self.hl(), self.alu8.acc);
+                self.write_byte(self.hl(), self.alu8.acc);
             }
             0x35 => {
                 // DEC (HL)
-                self.alu8.acc = self.deref_hl(mmu);
+                self.alu8.acc = self.deref_hl();
                 self.alu8.dec();
-                mmu.write_byte(self.hl(), self.alu8.acc);
+                self.write_byte(self.hl(), self.alu8.acc);
             }
             0x36 => {
                 // LD (HL), $00
-                mmu.write_byte(self.hl(), op_arg1);
+                self.write_byte(self.hl(), op_arg1);
             }
             0x37 => {
                 // SCF
@@ -852,7 +869,7 @@ impl Cpu {
             }
             0x3A => {
                 // LDD A, (HL)
-                let data = self.deref_hld(mmu);
+                let data = self.deref_hld();
                 self.set_a(data);
             }
             0x3B => {
@@ -900,7 +917,7 @@ impl Cpu {
             }
             0x46 => {
                 // LD B, (HL)
-                self.set_b(self.deref_hl(mmu));
+                self.set_b(self.deref_hl());
             }
             0x47 => {
                 // LD B, A
@@ -931,7 +948,7 @@ impl Cpu {
             }
             0x4E => {
                 // LD C, (HL)
-                self.set_c(self.deref_hl(mmu));
+                self.set_c(self.deref_hl());
             }
             0x4F => {
                 // LD C, A
@@ -962,7 +979,7 @@ impl Cpu {
             }
             0x56 => {
                 // LD D, (HL)
-                self.set_d(self.deref_hl(mmu));
+                self.set_d(self.deref_hl());
             }
             0x57 => {
                 // LD D, A
@@ -993,7 +1010,7 @@ impl Cpu {
             }
             0x5E => {
                 // LD E, (HL)
-                self.set_e(self.deref_hl(mmu));
+                self.set_e(self.deref_hl());
             }
             0x5F => {
                 // LD E, A
@@ -1024,7 +1041,7 @@ impl Cpu {
             }
             0x66 => {
                 // LD H, (HL)
-                self.set_h(self.deref_hl(mmu));
+                self.set_h(self.deref_hl());
             }
             0x67 => {
                 // LD H, A
@@ -1055,7 +1072,7 @@ impl Cpu {
             }
             0x6E => {
                 // LD L, (HL)
-                self.set_l(self.deref_hl(mmu));
+                self.set_l(self.deref_hl());
             }
             0x6F => {
                 // LD L, A
@@ -1063,34 +1080,34 @@ impl Cpu {
             }
             0x70 => {
                 // LD (HL), B
-                mmu.write_byte(self.hl(), self.b());
+                self.write_byte(self.hl(), self.b());
             }
             0x71 => {
                 // LD (HL), C
-                mmu.write_byte(self.hl(), self.c());
+                self.write_byte(self.hl(), self.c());
             }
             0x72 => {
                 // LD (HL), D
-                mmu.write_byte(self.hl(), self.d());
+                self.write_byte(self.hl(), self.d());
             }
             0x73 => {
                 // LD (HL), E
-                mmu.write_byte(self.hl(), self.e());
+                self.write_byte(self.hl(), self.e());
             }
             0x74 => {
                 // LD (HL), H
-                mmu.write_byte(self.hl(), self.h());
+                self.write_byte(self.hl(), self.h());
             }
             0x75 => {
                 // LD (HL), L
-                mmu.write_byte(self.hl(), self.l());
+                self.write_byte(self.hl(), self.l());
             }
             0x76 => {
                 // LD (HL), (HL)
             }
             0x77 => {
                 // LD (HL), A
-                mmu.write_byte(self.hl(), self.a());
+                self.write_byte(self.hl(), self.a());
             }
             0x78 => {
                 // LD A, B
@@ -1118,7 +1135,7 @@ impl Cpu {
             }
             0x7E => {
                 // LD A, (HL)
-                self.set_a(self.deref_hl(mmu));
+                self.set_a(self.deref_hl());
             }
             0x7F => {
                 // LD A, A
@@ -1149,7 +1166,7 @@ impl Cpu {
             }
             0x86 => {
                 // ADD A, (HL)
-                self.add8(self.deref_hl(mmu));
+                self.add8(self.deref_hl());
             }
             0x87 => {
                 // ADD A, A
@@ -1181,7 +1198,7 @@ impl Cpu {
             }
             0x8E => {
                 // ADC A, (HL)
-                self.adc8(self.deref_hl(mmu));
+                self.adc8(self.deref_hl());
             }
             0x8F => {
                 // ADC A, A
@@ -1213,7 +1230,7 @@ impl Cpu {
             }
             0x96 => {
                 // SUB A, (HL)
-                self.sub8(self.deref_hl(mmu));
+                self.sub8(self.deref_hl());
             }
             0x97 => {
                 // SUB A, A
@@ -1245,7 +1262,7 @@ impl Cpu {
             }
             0x9E => {
                 // SBC A, (HL)
-                self.sbc8(self.deref_hl(mmu));
+                self.sbc8(self.deref_hl());
             }
             0x9F => {
                 // SBC A, A
@@ -1277,7 +1294,7 @@ impl Cpu {
             }
             0xA6 => {
                 // AND A, (HL)
-                self.and8(self.deref_hl(mmu));
+                self.and8(self.deref_hl());
             }
             0xA7 => {
                 // AND A, A
@@ -1309,7 +1326,7 @@ impl Cpu {
             }
             0xAE => {
                 // XOR A, (HL)
-                self.xor8(self.deref_hl(mmu));
+                self.xor8(self.deref_hl());
             }
             0xAF => {
                 // XOR A, A
@@ -1341,7 +1358,7 @@ impl Cpu {
             }
             0xB6 => {
                 // OR A, (HL)
-                self.or8(self.deref_hl(mmu));
+                self.or8(self.deref_hl());
             }
             0xB7 => {
                 // OR A, A
@@ -1373,7 +1390,7 @@ impl Cpu {
             }
             0xBE => {
                 // CP A, (HL)
-                self.cp8(self.deref_hl(mmu));
+                self.cp8(self.deref_hl());
             }
             0xBF => {
                 // CP A, A
@@ -1382,12 +1399,12 @@ impl Cpu {
             0xC0 => {
                 // RET NZ
                 if !self.zero() {
-                    self.end_call(mmu);
+                    self.end_call();
                 }
             }
             0xC1 => {
                 // POP BC
-                self.pop_r16(Self::BC, mmu);
+                self.pop_r16(Self::BC);
             }
             0xC2 => {
                 // JP NZ $0000
@@ -1402,12 +1419,12 @@ impl Cpu {
             0xC4 => {
                 // CALL NZ $0000
                 if !self.zero() {
-                    self.begin_call(op_addr, mmu)
+                    self.begin_call(op_addr)
                 }
             }
             0xC5 => {
                 // PUSH BC
-                self.push_r16(Self::BC, mmu);
+                self.push_r16(Self::BC);
             }
             0xC6 => {
                 // ADD A, $00
@@ -1415,17 +1432,17 @@ impl Cpu {
             }
             0xC7 => {
                 // RST $00
-                self.begin_call(0x00, mmu);
+                self.begin_call(0x00);
             }
             0xC8 => {
                 // RET Z
                 if self.zero() {
-                    self.end_call(mmu);
+                    self.end_call();
                 }
             }
             0xC9 => {
                 // RET
-                self.end_call(mmu);
+                self.end_call();
             }
             0xCA => {
                 // JP Z $0000
@@ -1435,17 +1452,17 @@ impl Cpu {
             }
             0xCB => {
                 // PREFIX CB
-                self.execute_cb_ext(op_arg1, mmu)
+                self.execute_cb_ext(op_arg1)
             }
             0xCC => {
                 // CALL Z $0000
                 if self.zero() {
-                    self.begin_call(op_addr, mmu)
+                    self.begin_call(op_addr)
                 }
             }
             0xCD => {
                 // CALL $0000
-                self.begin_call(op_addr, mmu)
+                self.begin_call(op_addr)
             }
             0xCE => {
                 // ADC A, $00
@@ -1453,17 +1470,17 @@ impl Cpu {
             }
             0xCF => {
                 // RST $08
-                self.begin_call(0x08, mmu);
+                self.begin_call(0x08);
             }
             0xD0 => {
                 // RET NC
                 if !self.carry() {
-                    self.end_call(mmu);
+                    self.end_call();
                 }
             }
             0xD1 => {
                 // POP DE
-                self.pop_r16(Self::DE, mmu);
+                self.pop_r16(Self::DE);
             }
             0xD2 => {
                 // JP NC $0000
@@ -1477,12 +1494,12 @@ impl Cpu {
             0xD4 => {
                 // CALL NC $0000
                 if !self.carry() {
-                    self.begin_call(op_addr, mmu)
+                    self.begin_call(op_addr)
                 }
             }
             0xD5 => {
                 // PUSH DE
-                self.push_r16(Self::DE, mmu)
+                self.push_r16(Self::DE)
             }
             0xD6 => {
                 // SUB A, $00
@@ -1490,17 +1507,17 @@ impl Cpu {
             }
             0xD7 => {
                 // RST $10
-                self.begin_call(0x10, mmu);
+                self.begin_call(0x10);
             }
             0xD8 => {
                 // RET C
                 if self.carry() {
-                    self.end_call(mmu);
+                    self.end_call();
                 }
             }
             0xD9 => {
                 // RETI
-                self.end_call(mmu);
+                self.end_call();
                 self.int_enable = true;
             }
             0xDA => {
@@ -1515,7 +1532,7 @@ impl Cpu {
             0xDC => {
                 // CALL C $0000
                 if self.carry() {
-                    self.begin_call(op_addr, mmu)
+                    self.begin_call(op_addr)
                 }
             }
             0xDD => {
@@ -1527,23 +1544,23 @@ impl Cpu {
             }
             0xDF => {
                 // RST $18
-                self.begin_call(0x18, mmu);
+                self.begin_call(0x18);
             }
             0xE0 => {
                 // LDH ($00), A
                 let addr: u16 = 0xff00u16 | op_arg1 as u16;
                 let data = self.a();
-                mmu.write_byte(addr, data);
+                self.write_byte(addr, data);
             }
             0xE1 => {
                 // POP HL
-                self.pop_r16(Self::HL, mmu);
+                self.pop_r16(Self::HL);
             }
             0xE2 => {
                 // LDH (C), A
                 let addr = 0xff00u16 | self.c() as u16;
                 let data = self.a();
-                mmu.write_byte(addr, data);
+                self.write_byte(addr, data);
             }
             0xE3 => {
                 // [E3] - INVALID
@@ -1553,7 +1570,7 @@ impl Cpu {
             }
             0xE5 => {
                 // PUSH HL
-                self.push_r16(Self::HL, mmu);
+                self.push_r16(Self::HL);
             }
             0xE6 => {
                 // AND $00
@@ -1561,7 +1578,7 @@ impl Cpu {
             }
             0xE7 => {
                 // RST $20
-                self.begin_call(0x20, mmu);
+                self.begin_call(0x20);
             }
             0xE8 => {
                 // ADD SP, $00
@@ -1579,7 +1596,7 @@ impl Cpu {
             }
             0xEA => {
                 // LD ($0000), A
-                mmu.write_byte(op_addr, self.a());
+                self.write_byte(op_addr, self.a());
             }
             0xEB => {
                 // [EB] - INVALID
@@ -1596,22 +1613,22 @@ impl Cpu {
             }
             0xEF => {
                 // RST $28
-                self.begin_call(0x28, mmu);
+                self.begin_call(0x28);
             }
             0xF0 => {
                 // LDH A, ($00)
                 let addr: u16 = 0xff00u16 | op_arg1 as u16;
-                let data = mmu.read_byte(addr);
+                let data = self.read_byte(addr);
                 self.set_a(data);
             }
             0xF1 => {
                 // POP AF
-                self.pop_af(mmu);
+                self.pop_af();
             }
             0xF2 => {
                 // LD A, ($FF00+C)
                 let addr = 0xff00u16 | self.c() as u16;
-                let data = mmu.read_byte(addr);
+                let data = self.read_byte(addr);
                 self.set_a(data);
             }
             0xF3 => {
@@ -1623,7 +1640,7 @@ impl Cpu {
             }
             0xF5 => {
                 // PUSH AF
-                self.push_af(mmu);
+                self.push_af();
             }
             0xF6 => {
                 // OR $00
@@ -1631,7 +1648,7 @@ impl Cpu {
             }
             0xF7 => {
                 // RST $30
-                self.begin_call(0x30, mmu);
+                self.begin_call(0x30);
             }
             0xF8 => {
                 // LD HL,SP+$00
@@ -1644,7 +1661,7 @@ impl Cpu {
             }
             0xFA => {
                 // LD A, ($0000)
-                let data = mmu.read_byte(op_addr);
+                let data = self.read_byte(op_addr);
                 self.set_a(data);
             }
             0xFB => {
@@ -1663,12 +1680,12 @@ impl Cpu {
             }
             0xFF => {
                 // RST $38
-                self.begin_call(0x38, mmu);
+                self.begin_call(0x38);
             }
         }
     }
 
-    fn read_cb_arg(&mut self, cb_code: u8, mmu: &mut dyn Mmu) -> u8 {
+    fn read_cb_arg(&mut self, cb_code: u8) -> u8 {
         match cb_code & 0x7 {
             0x0 => self.b(),
             0x1 => self.c(),
@@ -1676,13 +1693,13 @@ impl Cpu {
             0x3 => self.e(),
             0x4 => self.h(),
             0x5 => self.l(),
-            0x6 => self.deref_hl(mmu),
+            0x6 => self.deref_hl(),
             0x7 => self.a(),
             _ => panic!("Impossible Case {} {}", cb_code, cb_code & 0x7)
         }
     }
 
-    fn write_cb_result(&mut self, cb_code: u8, result: u8, mmu: &mut dyn Mmu) {
+    fn write_cb_result(&mut self, cb_code: u8, result: u8) {
         match cb_code & 0x7 {
             0x0 => self.set_a(result),
             0x1 => self.set_c(result),
@@ -1690,14 +1707,14 @@ impl Cpu {
             0x3 => self.set_e(result),
             0x4 => self.set_h(result),
             0x5 => self.set_l(result),
-            0x6 => { mmu.write_byte(self.hl(), result); }
+            0x6 => { self.write_byte(self.hl(), result); }
             0x7 => self.set_a(result),
             _ => panic!("Impossible Case {} {}", cb_code, cb_code & 0x7)
         }
     }
 
-    fn execute_cb_ext(&mut self, cb_code: u8,  mmu: &mut dyn Mmu) {
-        let arg = self.read_cb_arg(cb_code, mmu);
+    fn execute_cb_ext(&mut self, cb_code: u8) {
+        let arg = self.read_cb_arg(cb_code);
         self.alu8.acc = arg;
 
         match cb_code {
@@ -1751,7 +1768,7 @@ impl Cpu {
         }
 
         if self.alu8.acc != arg {
-            self.write_cb_result(cb_code, self.alu8.acc, mmu);
+            self.write_cb_result(cb_code, self.alu8.acc);
         }
     }
 
@@ -1867,75 +1884,75 @@ impl Cpu {
         self.rr[Self::A] = self.alu8.acc;
     }
 
-    fn deref_bc(&self, mmu: &mut dyn Mmu) -> u8 {
-        mmu.read_byte(self.bc())
+    fn deref_bc(&mut self) -> u8 {
+        self.read_byte(self.bc())
     }
 
-    fn deref_de(&self, mmu: &mut dyn Mmu) -> u8 {
-        mmu.read_byte(self.de())
+    fn deref_de(&self) -> u8 {
+        self.read_byte(self.de())
     }
 
-    fn deref_hl(&self, mmu: &mut dyn Mmu) -> u8 {
-        mmu.read_byte(self.hl())
+    fn deref_hl(&self) -> u8 {
+        self.read_byte(self.hl())
     }
 
-    fn deref_hli(&mut self, mmu: &mut dyn Mmu) -> u8 {
-        let ret = self.deref_hl(mmu);
+    fn deref_hli(&mut self) -> u8 {
+        let ret = self.deref_hl();
         self.inc16(Self::HL);
         ret
     }
 
-    fn deref_hld(&mut self, mmu: &mut dyn Mmu) -> u8 {
-        let ret = self.deref_hl(mmu);
+    fn deref_hld(&mut self) -> u8 {
+        let ret = self.deref_hl();
         self.dec16(Self::HL);
         ret
     }
 
-    fn push_r16(&mut self, r_index: usize, mmu: &mut dyn Mmu) {
+    fn push_r16(&mut self, r_index: usize) {
         let h: u8 = self.rr[r_index + 0];
         let l: u8 = self.rr[r_index + 1];
-        self.push_nn(h, l, mmu);
+        self.push_nn(h, l);
     }
 
-    fn push_af(&mut self, mmu: &mut dyn Mmu) {
+    fn push_af(&mut self) {
         let h: u8 = self.a();
         let l: u8 = self.alu8.flags.into();
-        self.push_nn(h, l, mmu);
+        self.push_nn(h, l);
     }
 
-    fn push_sp(&mut self, mmu: &mut dyn Mmu) {
+    fn push_sp(&mut self) {
         let h = (self.sp.wrapping_shl(8) & 0xff) as u8;
         let l = (self.sp & 0xff) as u8;
-        self.push_nn(h, l, mmu);
+        self.push_nn(h, l);
     }
 
-    fn push_nn(&mut self, h: u8, l: u8, mmu: &mut dyn Mmu) {
-        mmu.write_byte(self.sp - 0, h);
-        mmu.write_byte(self.sp - 1, l);
+    fn push_nn(&mut self, h: u8, l: u8) {
+        self.write_byte(self.sp - 0, h);
+        self.write_byte(self.sp - 1, l);
 
         self.sp = self.sp - 2;
     }
 
-    fn pop_af(&mut self, mmu: &mut dyn Mmu) {
-        let (h, l) = self.pop_nn(mmu);
+    fn pop_af(&mut self) {
+        let (h, l) = self.pop_nn();
         self.rr[Self::A] = h;
         self.alu8.flags = Flags::from(l);
     }
 
-    fn pop_sp(&mut self, mmu: &mut dyn Mmu) {
-        let (h, l) = self.pop_nn(mmu);
+    fn pop_sp(&mut self) {
+        let (h, l) = self.pop_nn();
         self.sp = (h as u16) << 8 | l as u16;
     }
 
-    fn pop_r16(&mut self, r_index: usize, mmu: &mut dyn Mmu) {
-        let (h, l) = self.pop_nn(mmu);
+    fn pop_r16(&mut self, r_index: usize) {
+        let (h, l) = self.pop_nn();
         self.rr[r_index + 0] = h;
         self.rr[r_index + 1] = l;
     }
 
-    fn pop_nn(&mut self, mmu: &mut dyn Mmu) -> (u8, u8) {
-        let l = mmu.read_byte(self.sp + 1);
-        let h = mmu.read_byte(self.sp + 2);
+    fn pop_nn(&mut self) -> (u8, u8) {
+        let l = self.read_byte(self.sp + 1);
+        let h = self.read_byte(self.sp + 2);
         self.sp = self.sp + 2;
         (h, l)
     }
@@ -1948,14 +1965,14 @@ impl Cpu {
         self.next_pc = self.next_pc.wrapping_add((offset as i8) as u16)
     }
 
-    fn begin_call(&mut self, call_addr: u16, mmu: &mut dyn Mmu) {
+    fn begin_call(&mut self, call_addr: u16) {
         let ret_addr_bytes = self.next_pc.to_be_bytes();
-        self.push_nn(ret_addr_bytes[0], ret_addr_bytes[1], mmu);
+        self.push_nn(ret_addr_bytes[0], ret_addr_bytes[1]);
         self.next_pc = call_addr;
     }
 
-    fn end_call(&mut self, mmu: &mut dyn Mmu) {
-        let (l, h) = self.pop_nn(mmu);
+    fn end_call(&mut self) {
+        let (l, h) = self.pop_nn();
         self.next_pc = u16::from_be_bytes([l, h]);
     }
 }
