@@ -2,6 +2,7 @@ pub mod asm;
 pub mod alu8;
 pub mod alu16;
 pub mod flags;
+pub mod regs;
 
 use std::rc::Rc;
 use std::cell::RefCell;
