@@ -1,4 +1,5 @@
 use crate::flags::Flags;
+use std::ops::RangeInclusive;
 
 #[derive(Default)]
 /// Gameboy (LR35902) 8 Bit Arithmetic Logic Unit
@@ -380,54 +381,55 @@ impl ALU8 {
         self.acc = self.acc & !(1 << bit_index);
     }
 
+    // --------------------------------------------------------------------------------
+    // |           | C Flag  | HEX value in | H Flag | HEX value in | Number  | C flag|
+    // | Operation | Before  | upper digit  | Before | lower digit  | added   | After |
+    // |           | DAA     | (bit 7-4)    | DAA    | (bit 3-0)    | to byte | DAA   |
+    // |------------------------------------------------------------------------------|
+    // |           |    0    |     0-9      |   0    |     0-9      |   00    |   0   | R0
+    // |   ADD     |    0    |     0-8      |   0    |     A-F      |   06    |   0   | R1
+    // |           |    0    |     0-9      |   1    |     0-3      |   06    |   0   | R2
+    // |   ADC     |    0    |     A-F      |   0    |     0-9      |   60    |   1   | R3
+    // |           |    0    |     9-F      |   0    |     A-F      |   66    |   1   | R4
+    // |   INC     |    0    |     A-F      |   1    |     0-3      |   66    |   1   | R5
+    // |           |    1    |     0-2      |   0    |     0-9      |   60    |   1   | R6
+    // |           |    1    |     0-2      |   0    |     A-F      |   66    |   1   | R7
+    // |           |    1    |     0-3      |   1    |     0-3      |   66    |   1   | R8
+    // |------------------------------------------------------------------------------|
+    // |   SUB     |    0    |     0-9      |   0    |     0-9      |   00    |   0   | R9
+    // |   SBC     |    0    |     0-8      |   1    |     6-F      |   FA    |   0   | R10
+    // |   DEC     |    1    |     7-F      |   0    |     0-9      |   A0    |   1   | R11
+    // |   NEG     |    1    |     6-F      |   1    |     6-F      |   9A    |   1   | R12
+    // |------------------------------------------------------------------------------|
+    // Source: http://www.z80.info/z80syntx.htm#DAA
+
+    //   Flags, upper_range, lower_range, adjustment, carry |
+    const DAA_TABLE: &'static [(Flags, RangeInclusive<u8>, RangeInclusive<u8>, u8, bool); 13] = &[
+        (Flags::NONE, (0x0..=0x9), (0x0..=0x9), 0x00, false), // R0
+        (Flags::NONE, (0x0..=0x8), (0xA..=0xF), 0x06, false), // R1
+        (Flags::H,    (0x0..=0x9), (0x0..=0x3), 0x06, false), // R2
+        (Flags::NONE, (0xA..=0xF), (0x0..=0x9), 0x60, true),  // R3
+        (Flags::NONE, (0x9..=0xF), (0xA..=0xF), 0x66, true),  // R4
+        (Flags::H,    (0xA..=0xF), (0x0..=0x3), 0x66, true),  // R5
+        (Flags::C,    (0x0..=0x2), (0x0..=0x9), 0x60, true),  // R6
+        (Flags::C,    (0x0..=0x2), (0xA..=0xF), 0x66, true),  // R7
+        (Flags::HC,   (0x0..=0x3), (0x0..=0x3), 0x66, true),  // R8
+
+        (Flags::N,    (0x0..=0x9), (0x0..=0x9), 0x00, false), // R9
+        (Flags::NH,   (0x0..=0x8), (0x6..=0xF), 0xFA, false), // R10
+        (Flags::NC,   (0x7..=0xF), (0x0..=0x9), 0xA0, true),  // R11
+        (Flags::NHC,  (0x6..=0xF), (0x6..=0xF), 0x9A, true),  // R12
+    ];
+
     /// Decimal Adjust acc to obtain the bcd representation
     ///
-    /// Z - Set if register acc is zero. 
-    /// N - Not affected.
-    /// H - Reset.
-    /// C - Set or reset according to operation.
+    /// - Z: Set if register acc is zero.
+    /// - N: Not affected.
+    /// - H: Reset.
+    /// - C: Set or reset according to operation.
     pub fn daa(&mut self) {
-        // --------------------------------------------------------------------------------
-        // |           | C Flag  | HEX value in | H Flag | HEX value in | Number  | C flag|
-        // | Operation | Before  | upper digit  | Before | lower digit  | added   | After |
-        // |           | DAA     | (bit 7-4)    | DAA    | (bit 3-0)    | to byte | DAA   |
-        // |------------------------------------------------------------------------------|
-        // |           |    0    |     0-9      |   0    |     0-9      |   00    |   0   | R0
-        // |   ADD     |    0    |     0-8      |   0    |     A-F      |   06    |   0   | R1
-        // |           |    0    |     0-9      |   1    |     0-3      |   06    |   0   | R2
-        // |   ADC     |    0    |     A-F      |   0    |     0-9      |   60    |   1   | R3
-        // |           |    0    |     9-F      |   0    |     A-F      |   66    |   1   | R4
-        // |   INC     |    0    |     A-F      |   1    |     0-3      |   66    |   1   | R5
-        // |           |    1    |     0-2      |   0    |     0-9      |   60    |   1   | R6
-        // |           |    1    |     0-2      |   0    |     A-F      |   66    |   1   | R7
-        // |           |    1    |     0-3      |   1    |     0-3      |   66    |   1   | R8
-        // |------------------------------------------------------------------------------|
-        // |   SUB     |    0    |     0-9      |   0    |     0-9      |   00    |   0   | R9
-        // |   SBC     |    0    |     0-8      |   1    |     6-F      |   FA    |   0   | R10
-        // |   DEC     |    1    |     7-F      |   0    |     0-9      |   A0    |   1   | R11
-        // |   NEG     |    1    |     6-F      |   1    |     6-F      |   9A    |   1   | R12
-        // |------------------------------------------------------------------------------|
-
-        //   Flags, upper_range, lower_range, adjustment, new_carry |
-        let lookup: [(Flags, std::ops::Range<u8>, std::ops::Range<u8>, u8, bool); 13] = [
-            (Flags::NONE, (0x0..0x9), (0x0..0x9), 0x00, false), // R0
-            (Flags::NONE, (0x0..0x8), (0xA..0xF), 0x06, false), // R1
-            (Flags::H,    (0x0..0x9), (0x0..0x3), 0x06, false), // R2
-            (Flags::NONE, (0xA..0xF), (0x0..0x9), 0x60, true),  // R3
-            (Flags::NONE, (0x9..0xF), (0xA..0xF), 0x66, true),  // R4
-            (Flags::H,    (0xA..0xF), (0x0..0x3), 0x66, true),  // R5
-            (Flags::C,    (0x0..0x2), (0x0..0x9), 0x60, true),  // R6
-            (Flags::C,    (0x0..0x2), (0xA..0xF), 0x66, true),  // R7
-            (Flags::HC,   (0x0..0x3), (0x0..0x3), 0x66, true),  // R8
-
-            (Flags::N,    (0x0..0x9), (0x0..0x9), 0x00, false), // R9
-            (Flags::NH,   (0x0..0x8), (0x6..0xF), 0xFA, false), // R10
-            (Flags::NC,   (0x7..0xF), (0x0..0x9), 0xA0, true),  // R11
-            (Flags::NHC,  (0x6..0xF), (0x6..0xF), 0x9A, true),  // R12
-        ];
-
-        let upper: u8 = self.acc & 0xf;
-        let lower: u8 = self.acc.wrapping_shr(4);
+        let upper: u8 = self.acc.wrapping_shr(4);
+        let lower: u8 = self.acc & 0xf;
 
         let flags = self.flags & Flags::NHC;
 
@@ -435,7 +437,7 @@ impl ALU8 {
         let mut carry: bool = false;
         let mut found: bool = false;
 
-        for (lookup_flags, upper_range, lower_range, next_adjustment, next_carry) in &lookup {
+        for (lookup_flags, upper_range, lower_range, next_adjustment, next_carry) in Self::DAA_TABLE {
             if &flags == lookup_flags && upper_range.contains(&upper) && lower_range.contains(&lower) {
                 adjustment = *next_adjustment;
                 carry = *next_carry;
@@ -444,7 +446,7 @@ impl ALU8 {
             }
         }
 
-        if found {
+        if !found {
             panic!("Invalid Value {:?} {:x}", self.flags, self.acc);
         }
 
@@ -1018,4 +1020,37 @@ pub fn alu8_reset_bit_test() {
     assert_eq!(0b0000_0000, alu.acc);
 
     assert_eq!(Flags::ZNHC, alu.flags);
+}
+
+#[test]
+pub fn alu_daa_test() {
+    let mut alu1 = ALU8::new(0x00, 0);
+    alu1.add(0x00);
+    alu1.daa();
+    assert_eq!(0x00, alu1.acc);
+
+    let mut alu2 = ALU8::new(0x06, 0);
+    alu2.add(0x03);
+    alu2.daa();
+    assert_eq!(0x09, alu2.acc);
+
+    let mut alu3 = ALU8::new(0x05, 0);
+    alu3.add(0x05);
+    alu3.daa();
+    assert_eq!(0x10, alu3.acc);
+
+    let mut alu4 = ALU8::new(0x08, 0);
+    alu4.add(0x07);
+    alu4.daa();
+    assert_eq!(0x15, alu4.acc);
+
+    let mut alu5 = ALU8::new(0x50, 0);
+    alu5.add(0x40);
+    alu5.daa();
+    assert_eq!(0x90, alu5.acc);
+
+    let mut alu6 = ALU8::new(0x50, 0);
+    alu6.sub(0x40);
+    alu6.daa();
+    assert_eq!(0x10, alu6.acc);
 }

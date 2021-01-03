@@ -1435,6 +1435,7 @@ impl Cpu {
             }
             0xCB => {
                 // PREFIX CB
+                self.execute_cb_ext(op_arg1, mmu)
             }
             0xCC => {
                 // CALL Z $0000
@@ -1667,6 +1668,92 @@ impl Cpu {
         }
     }
 
+    fn read_cb_arg(&mut self, cb_code: u8, mmu: &mut dyn Mmu) -> u8 {
+        match cb_code & 0x7 {
+            0x0 => self.b(),
+            0x1 => self.c(),
+            0x2 => self.d(),
+            0x3 => self.e(),
+            0x4 => self.h(),
+            0x5 => self.l(),
+            0x6 => self.deref_hl(mmu),
+            0x7 => self.a(),
+            _ => panic!("Impossible Case {} {}", cb_code, cb_code & 0x7)
+        }
+    }
+
+    fn write_cb_result(&mut self, cb_code: u8, result: u8, mmu: &mut dyn Mmu) {
+        match cb_code & 0x7 {
+            0x0 => self.set_a(result),
+            0x1 => self.set_c(result),
+            0x2 => self.set_d(result),
+            0x3 => self.set_e(result),
+            0x4 => self.set_h(result),
+            0x5 => self.set_l(result),
+            0x6 => { mmu.write_byte(self.hl(), result); }
+            0x7 => self.set_a(result),
+            _ => panic!("Impossible Case {} {}", cb_code, cb_code & 0x7)
+        }
+    }
+
+    fn execute_cb_ext(&mut self, cb_code: u8,  mmu: &mut dyn Mmu) {
+        let arg = self.read_cb_arg(cb_code, mmu);
+        self.alu8.acc = arg;
+
+        match cb_code {
+            0x00..=0x07 => {
+                // RLC
+                self.alu8.rlc();
+            }
+            0x08..=0x0F => {
+                // RRC
+                self.alu8.rrc();
+            }
+            0x10..=0x17 => {
+                // RL
+                self.alu8.rl();
+            }
+            0x18..=0x1F => {
+                // RR
+                self.alu8.rr();
+            }
+            0x20..=0x27 => {
+                // SLA
+                self.alu8.sl();
+            }
+            0x28..=0x2F => {
+                // SRA
+                self.alu8.sr();
+            }
+            0x30..=0x37 => {
+                // SWAP
+                self.alu8.nibble_swap();
+            }
+            0x38..=0x3F => {
+                // SRL
+                self.alu8.srl();
+            }
+            0x40..=0x7F => {
+                // BIT
+                let bit_index = (cb_code - 0x40) / 8;
+                self.alu8.test_bit(bit_index);
+            }
+            0x80..=0xBF => {
+                // RES
+                let bit_index = (cb_code - 0x80) / 8;
+                self.alu8.reset_bit(bit_index);
+            }
+            0xC0..=0xFF => {
+                // SET
+                let bit_index = (cb_code - 0xC0) / 8;
+                self.alu8.set_bit(bit_index);
+            }
+        }
+
+        if self.alu8.acc != arg {
+            self.write_cb_result(cb_code, self.alu8.acc, mmu);
+        }
+    }
 
     fn add8(&mut self, arg: u8) {
         self.alu8.acc = self.rr[Self::A];
