@@ -1,9 +1,7 @@
-use super::flags::Flags;
-
-#[derive(Default)]
+#[derive(Copy,Clone,Default)]
 pub struct Regs {
     a: u8,
-    f: Flags,
+    f: u8,
     b: u8,
     c: u8,
     d: u8,
@@ -17,7 +15,7 @@ pub struct Regs {
 #[allow(dead_code)]
 impl Regs {
     pub fn a(&self) -> u8 { self.a }
-    pub fn f(&self) -> u8 { self.f.into() }
+    pub fn f(&self) -> u8 { self.f }
     pub fn b(&self) -> u8 { self.b }
     pub fn c(&self) -> u8 { self.c }
     pub fn d(&self) -> u8 { self.b }
@@ -25,7 +23,7 @@ impl Regs {
     pub fn h(&self) -> u8 { self.b }
     pub fn l(&self) -> u8 { self.c }
 
-    pub fn af(&self) -> u16 { u16::from_be_bytes([self.a, self.f.into()]) }
+    pub fn af(&self) -> u16 { u16::from_be_bytes([self.a, self.f]) }
     pub fn bc(&self) -> u16 { u16::from_be_bytes([self.b, self.c]) }
     pub fn de(&self) -> u16 { u16::from_be_bytes([self.d, self.e]) }
     pub fn hl(&self) -> u16 { u16::from_be_bytes([self.h, self.l]) }
@@ -33,7 +31,7 @@ impl Regs {
     pub fn pc(&self) -> u16 { self.pc }
 
     pub fn set_a(&mut self, r: u8) { self.a = r; }
-    pub fn set_f(&mut self, r: u8) { self.f = Flags::from(r) }
+    pub fn set_f(&mut self, r: u8) { self.f = r; }
     pub fn set_b(&mut self, r: u8) { self.b = r; }
     pub fn set_c(&mut self, r: u8) { self.c = r; }
     pub fn set_d(&mut self, r: u8) { self.b = r; }
@@ -44,7 +42,7 @@ impl Regs {
     pub fn set_af(&mut self, r: u16) {
         let bytes = r.to_be_bytes();
         self.a = bytes[0];
-        self.f = Flags::from(bytes[1]);
+        self.f = bytes[1];
     }
 
     pub fn set_bc(&mut self, r: u16) {

@@ -1,6 +1,5 @@
 pub mod asm;
-pub mod alu8;
-pub mod alu16;
+pub mod alu;
 pub mod flags;
 pub mod regs;
 
@@ -10,8 +9,7 @@ use std::cell::RefCell;
 use crate::cpu::asm::disassemble;
 use crate::cpu::asm::instruction_size;
 use crate::cpu::asm::instruction_ticks;
-use crate::cpu::alu8::ALU8;
-use crate::cpu::alu16::ALU16;
+use crate::cpu::alu::Alu;
 use crate::cpu::flags::Flags;
 use crate::cpu::regs::Regs;
 
@@ -21,7 +19,7 @@ use crate::mmu::Memory;
 #[allow(dead_code)]
 #[derive(Default)]
 pub struct Cpu {
-    alu8: ALU8,    // Arithmetic Logic Unit for 8 bit registers
+    alu: Alu,    // Arithmetic Logic Unit
     regs: Regs,    // Registers
     next_pc: u16,  // next program counter position
 
@@ -50,22 +48,22 @@ impl Cpu {
 
     #[inline(always)]
     pub fn carry(&self) -> bool {
-        self.alu8.flags.carry()
+        self.alu.flags.carry()
     }
 
     #[inline(always)]
     pub fn half(&self) -> bool {
-        self.alu8.flags.half()
+        self.alu.flags.half()
     }
 
     #[inline(always)]
     pub fn sub(&self) -> bool {
-        self.alu8.flags.sub()
+        self.alu.flags.sub()
     }
 
     #[inline(always)]
     pub fn zero(&self) -> bool {
-        self.alu8.flags.zero()
+        self.alu.flags.zero()
     }
 
     pub fn read_byte(&self, addr: u16) -> u8 {
@@ -105,15 +103,15 @@ impl Cpu {
             },
             0x03 => {
                 // INC BC
-                self.inc16(Self::BC);
+                self.regs.set_bc(self.alu.inc16(self.regs.bc()));
             }
             0x04 => {
                 // INC B
-                self.inc8(Self::B);
+                self.regs.set_b(self.alu.inc(self.regs.b()));
             }
             0x05 => {
                 // DEC B
-                self.dec8(Self::B);
+                self.regs.set_b(self.alu.dec(self.regs.b()));
             }
             0x06 => {
                 // LD B, $00
@@ -121,7 +119,7 @@ impl Cpu {
             }
             0x07 => {
                 // RLCA
-                self.rlc8(Self::A);
+                self.regs.set_a(self.alu.rlc(self.regs.a()));
             }
             0x08 => {
                 // LD ($0000),SP
@@ -131,13 +129,7 @@ impl Cpu {
             }
             0x09 => {
                 // ADD HL, BC
-                let mut alu16 = ALU16::default();
-                alu16.acc = self.regs.hl();
-                alu16.flags = self.alu8.flags;
-                alu16.add(self.regs.bc());
-
-                self.regs.set_hl(alu16.acc);
-                self.alu8.flags = alu16.flags;
+                self.regs.set_hl(self.alu.add16(self.regs.hl(), self.regs.bc()));
             }
             0x0A => {
                 // LD A, (BC)
@@ -146,15 +138,15 @@ impl Cpu {
             }
             0x0B => {
                 // DEC BC
-                self.dec16(Self::BC);
+                self.regs.set_bc(self.alu.dec16(self.regs.bc()));
             }
             0x0C => {
                 // INC C
-                self.inc8(Self::C);
+                self.regs.set_c(self.alu.inc(self.regs.c()));
             }
             0x0D => {
                 // DEC C
-                self.dec8(Self::C);
+                self.regs.set_c(self.alu.dec(self.regs.c()));
             }
             0x0E => {
                 // LD C, $00
@@ -162,7 +154,7 @@ impl Cpu {
             }
             0x0F => {
                 // RRCA
-                self.rrc8(Self::A);
+                self.regs.set_a(self.alu.rrc(self.regs.a()));
             }
             0x10 => {
                 // STOP 0
@@ -177,15 +169,15 @@ impl Cpu {
             }
             0x13 => {
                 // INC DE
-                self.inc16(Self::DE);
+                self.regs.set_de(self.alu.inc16(self.regs.de()));
             }
             0x14 => {
                 // INC D
-                self.inc8(Self::D);
+                self.regs.set_d(self.alu.inc(self.regs.d()));
             }
             0x15 => {
                 // DEC D
-                self.dec8(Self::D);
+                self.regs.set_d(self.alu.dec(self.regs.d()));
             }
             0x16 => {
                 // LD D, $00
@@ -193,7 +185,7 @@ impl Cpu {
             }
             0x17 => {
                 // RLA
-                self.rl8(Self::A);
+                self.regs.set_a(self.alu.rl(self.regs.a()));
             }
             0x18 => {
                 // JR $00
@@ -201,13 +193,7 @@ impl Cpu {
             }
             0x19 => {
                 // ADD HL, DE
-                let mut alu16 = ALU16::default();
-                alu16.acc = self.regs.hl();
-                alu16.flags = self.alu8.flags;
-                alu16.add(self.regs.de());
-
-                self.regs.set_hl(alu16.acc);
-                self.alu8.flags = alu16.flags;
+                self.regs.set_hl(self.alu.add16(self.regs.hl(), self.regs.de()));
             }
             0x1A => {
                 // LD A, (DE)
@@ -215,15 +201,15 @@ impl Cpu {
             }
             0x1B => {
                 // DEC DE
-                self.dec16(Self::DE);
+                self.regs.set_de(self.alu.dec16(self.regs.de()));
             }
             0x1C => {
                 // INC E
-                self.inc8(Self::E);
+                self.regs.set_e(self.alu.inc(self.regs.e()));
             }
             0x1D => {
                 // DEC E
-                self.dec8(Self::E);
+                self.regs.set_e(self.alu.dec(self.regs.e()));
             }
             0x1E => {
                 // LD E, $00
@@ -231,7 +217,7 @@ impl Cpu {
             }
             0x1F => {
                 // RRA
-                self.rr8(Self::A);
+                self.regs.set_a(self.alu.rr(self.regs.a()));
             }
             0x20 => {
                 // JR NZ $00
@@ -248,19 +234,19 @@ impl Cpu {
                 let addr = self.regs.hl();
                 let data = self.regs.a();
                 self.write_byte(addr, data);
-                self.inc16(Self::HL);
+                self.regs.set_hl(self.alu.inc16(addr));
             }
             0x23 => {
                 // INC HL
-                self.inc16(Self::HL);
+                self.regs.set_hl(self.alu.inc16(self.regs.hl()));
             }
             0x24 => {
                 // INC H
-                self.inc8(Self::H);
+                self.regs.set_h(self.alu.inc(self.regs.h()));
             }
             0x25 => {
                 // DEC H
-                self.dec8(Self::H);
+                self.regs.set_h(self.alu.dec(self.regs.h()));
             }
             0x26 => {
                 // LD H, $00
@@ -268,9 +254,7 @@ impl Cpu {
             }
             0x27 => {
                 // DAA
-                self.alu8.acc = self.regs.a();
-                self.alu8.daa();
-                self.regs.set_a(self.alu8.acc);
+                self.regs.set_a(self.alu.daa(self.regs.a()));
             }
             0x28 => {
                 // JR Z $00
@@ -280,15 +264,7 @@ impl Cpu {
             }
             0x29 => {
                 // ADD HL, HL
-                let hl = self.regs.hl();
-
-                let mut alu16 = ALU16::default();
-                alu16.acc = hl;
-                alu16.flags = self.alu8.flags;
-                alu16.add(hl);
-
-                self.regs.set_hl(alu16.acc);
-                self.alu8.flags = alu16.flags;
+                self.regs.set_hl(self.alu.add16(self.regs.hl(), self.regs.hl()));
             }
             0x2A => {
                 // LDI A, (HL)
@@ -297,15 +273,15 @@ impl Cpu {
             }
             0x2B => {
                 // DEC HL
-                self.dec16(Self::HL);
+                self.regs.set_hl(self.alu.dec16(self.regs.hl()));
             }
             0x2C => {
                 // INC L
-                self.inc8(Self::L);
+                self.regs.set_l(self.alu.inc(self.regs.l()));
             }
             0x2D => {
                 // DEC L
-                self.dec8(Self::L);
+                self.regs.set_l(self.alu.dec(self.regs.l()));
             }
             0x2E => {
                 // LD L, $00
@@ -313,9 +289,7 @@ impl Cpu {
             }
             0x2F => {
                 // CPL
-                self.alu8.acc = self.regs.a();
-                self.alu8.complement();
-                self.regs.set_a(self.alu8.acc);
+                self.regs.set_a(self.alu.complement(self.regs.a()))
             }
             0x30 => {
                 // JR NC $00
@@ -337,15 +311,15 @@ impl Cpu {
             }
             0x34 => {
                 // INC (HL)
-                self.alu8.acc = self.deref_hl();
-                self.alu8.inc();
-                self.write_byte(self.regs.hl(), self.alu8.acc);
+                let addr = self.regs.hl();
+                let data = self.alu.inc(self.read_byte(addr));
+                self.write_byte(addr, data);
             }
             0x35 => {
                 // DEC (HL)
-                self.alu8.acc = self.deref_hl();
-                self.alu8.dec();
-                self.write_byte(self.regs.hl(), self.alu8.acc);
+                let addr = self.regs.hl();
+                let data = self.alu.dec(self.read_byte(addr));
+                self.write_byte(addr, data);
             }
             0x36 => {
                 // LD (HL), $00
@@ -353,7 +327,7 @@ impl Cpu {
             }
             0x37 => {
                 // SCF
-                self.alu8.flags.set_carry();
+                self.alu.flags.set_carry();
             }
             0x38 => {
                 // JR C $00
@@ -363,13 +337,7 @@ impl Cpu {
             }
             0x39 => {
                 // ADD HL, SP
-                let mut alu16 = ALU16::default();
-                alu16.acc = self.regs.hl();
-                alu16.flags = self.alu8.flags;
-                alu16.add(self.regs.sp());
-
-                self.regs.set_hl(alu16.acc);
-                self.alu8.flags = alu16.flags;
+                self.regs.set_hl(self.alu.add16(self.regs.hl(), self.regs.sp()));
             }
             0x3A => {
                 // LDD A, (HL)
@@ -382,11 +350,11 @@ impl Cpu {
             }
             0x3C => {
                 // INC A
-                self.inc8(Self::A);
+                self.regs.set_a(self.alu.inc(self.regs.a()));
             }
             0x3D => {
                 // DEC A
-                self.dec8(Self::A);
+                self.regs.set_a(self.alu.dec(self.regs.a()));
             }
             0x3E => {
                 // LD A, $00
@@ -394,7 +362,7 @@ impl Cpu {
             }
             0x3F => {
                 // CCF
-                self.alu8.flags.reset_carry();
+                self.alu.flags.reset_carry();
             }
             0x40 => {
                 // LD B, B
@@ -650,255 +618,255 @@ impl Cpu {
             }
             0x81 => {
                 // ADD A, C
-                self.add8(self.regs.c());
+                self.regs.set_a(self.alu.add(self.regs.a(), self.regs.c()));
             }
             0x82 => {
                 // ADD A, D
-                self.add8(self.regs.d());
+                self.regs.set_a(self.alu.add(self.regs.a(), self.regs.d()));
             }
             0x83 => {
                 // ADD A, E
-                self.add8(self.regs.e());
+                self.regs.set_a(self.alu.add(self.regs.a(), self.regs.e()));
             }
             0x84 => {
                 // ADD A, H
-                self.add8(self.regs.h());
+                self.regs.set_a(self.alu.add(self.regs.a(), self.regs.h()));
             }
             0x85 => {
                 // ADD A, L
-                self.add8(self.regs.l());
+                self.regs.set_a(self.alu.add(self.regs.a(), self.regs.l()));
             }
             0x86 => {
                 // ADD A, (HL)
-                self.add8(self.deref_hl());
+                self.regs.set_a(self.alu.add(self.regs.a(), self.deref_hl()));
             }
             0x87 => {
                 // ADD A, A
-                self.add8(self.regs.a());
+                self.regs.set_a(self.alu.add(self.regs.a(), self.regs.a()));
             }
             0x88 => {
                 // ADC A, B
-                self.adc8(self.regs.b());
+                self.regs.set_a(self.alu.adc(self.regs.a(), self.regs.b()));
             }
             0x89 => {
                 // ADC A, C
-                self.adc8(self.regs.c());
+                self.regs.set_a(self.alu.adc(self.regs.a(), self.regs.c()));
             }
             0x8A => {
                 // ADC A, D
-                self.adc8(self.regs.d());
+                self.regs.set_a(self.alu.adc(self.regs.a(), self.regs.d()));
             }
             0x8B => {
                 // ADC A, E
-                self.adc8(self.regs.e());
+                self.regs.set_a(self.alu.adc(self.regs.a(), self.regs.e()));
             }
             0x8C => {
                 // ADC A, H
-                self.adc8(self.regs.h());
+                self.regs.set_a(self.alu.adc(self.regs.a(), self.regs.h()));
             }
             0x8D => {
                 // ADC A, L
-                self.adc8(self.regs.l());
+                self.regs.set_a(self.alu.adc(self.regs.a(), self.regs.l()));
             }
             0x8E => {
                 // ADC A, (HL)
-                self.adc8(self.deref_hl());
+                self.regs.set_a(self.alu.adc(self.regs.a(), self.deref_hl()));
             }
             0x8F => {
                 // ADC A, A
-                self.adc8(self.regs.a());
+                self.regs.set_a(self.alu.adc(self.regs.a(), self.regs.a()));
             }
             0x90 => {
                 // SUB A, B
-                self.sub8(self.regs.b());
+                self.regs.set_a(self.alu.sub(self.regs.a(), self.regs.b()));
             }
             0x91 => {
                 // SUB A, C
-                self.sub8(self.regs.c());
+                self.regs.set_a(self.alu.sub(self.regs.a(), self.regs.c()));
             }
             0x92 => {
                 // SUB A, D
-                self.sub8(self.regs.d());
+                self.regs.set_a(self.alu.sub(self.regs.a(), self.regs.d()));
             }
             0x93 => {
                 // SUB A, E
-                self.sub8(self.regs.e());
+                self.regs.set_a(self.alu.sub(self.regs.a(), self.regs.e()));
             }
             0x94 => {
                 // SUB A, H
-                self.sub8(self.regs.h());
+                self.regs.set_a(self.alu.sub(self.regs.a(), self.regs.h()));
             }
             0x95 => {
                 // SUB A, L
-                self.sub8(self.regs.l());
+                self.regs.set_a(self.alu.sub(self.regs.a(), self.regs.l()));
             }
             0x96 => {
                 // SUB A, (HL)
-                self.sub8(self.deref_hl());
+                self.regs.set_a(self.alu.sub(self.regs.a(), self.deref_hl()));
             }
             0x97 => {
                 // SUB A, A
-                self.sub8(self.regs.a());
+                self.regs.set_a(self.alu.sub(self.regs.a(), self.regs.a()));
             }
             0x98 => {
                 // SBC A, B
-                self.sbc8(self.regs.b());
+                self.regs.set_a(self.alu.sbc(self.regs.a(), self.regs.b()));
             }
             0x99 => {
                 // SBC A, C
-                self.sbc8(self.regs.c());
+                self.regs.set_a(self.alu.sbc(self.regs.a(), self.regs.c()));
             }
             0x9A => {
                 // SBC A, D
-                self.sbc8(self.regs.d());
+                self.regs.set_a(self.alu.sbc(self.regs.a(), self.regs.d()));
             }
             0x9B => {
                 // SBC A, E
-                self.sbc8(self.regs.e());
+                self.regs.set_a(self.alu.sbc(self.regs.a(), self.regs.e()));
             }
             0x9C => {
                 // SBC A, H
-                self.sbc8(self.regs.h());
+                self.regs.set_a(self.alu.sbc(self.regs.a(), self.regs.h()));
             }
             0x9D => {
                 // SBC A, L
-                self.sbc8(self.regs.l());
+                self.regs.set_a(self.alu.sbc(self.regs.a(), self.regs.l()));
             }
             0x9E => {
                 // SBC A, (HL)
-                self.sbc8(self.deref_hl());
+                self.regs.set_a(self.alu.sbc(self.regs.a(), self.deref_hl()));
             }
             0x9F => {
                 // SBC A, A
-                self.sbc8(self.regs.a());
+                self.regs.set_a(self.alu.sbc(self.regs.a(), self.regs.a()));
             }
             0xA0 => {
                 // AND A, B
-                self.and8(self.regs.b());
+                self.regs.set_a(self.alu.and(self.regs.a(), self.regs.b()));
             }
             0xA1 => {
                 // AND A, C
-                self.and8(self.regs.c());
+                self.regs.set_a(self.alu.and(self.regs.a(), self.regs.c()));
             }
             0xA2 => {
                 // AND A, D
-                self.and8(self.regs.d());
+                self.regs.set_a(self.alu.and(self.regs.a(), self.regs.d()));
             }
             0xA3 => {
                 // AND A, E
-                self.and8(self.regs.e());
+                self.regs.set_a(self.alu.and(self.regs.a(), self.regs.e()));
             }
             0xA4 => {
                 // AND A, H
-                self.and8(self.regs.h());
+                self.regs.set_a(self.alu.and(self.regs.a(), self.regs.h()));
             }
             0xA5 => {
                 // AND A, L
-                self.and8(self.regs.l());
+                self.regs.set_a(self.alu.and(self.regs.a(), self.regs.l()));
             }
             0xA6 => {
                 // AND A, (HL)
-                self.and8(self.deref_hl());
+                self.regs.set_a(self.alu.and(self.regs.a(), self.deref_hl()));
             }
             0xA7 => {
                 // AND A, A
-                self.and8(self.regs.a());
+                self.regs.set_a(self.alu.and(self.regs.a(), self.regs.a()));
             }
             0xA8 => {
                 // XOR A, B
-                self.xor8(self.regs.b());
+                self.regs.set_a(self.alu.xor(self.regs.a(), self.regs.b()));
             }
             0xA9 => {
                 // XOR A, C
-                self.xor8(self.regs.c());
+                self.regs.set_a(self.alu.xor(self.regs.a(), self.regs.c()));
             }
             0xAA => {
                 // XOR A, D
-                self.xor8(self.regs.d());
+                self.regs.set_a(self.alu.xor(self.regs.a(), self.regs.d()));
             }
             0xAB => {
                 // XOR A, E
-                self.xor8(self.regs.e());
+                self.regs.set_a(self.alu.xor(self.regs.a(), self.regs.e()));
             }
             0xAC => {
                 // XOR A, H
-                self.xor8(self.regs.h());
+                self.regs.set_a(self.alu.xor(self.regs.a(), self.regs.h()));
             }
             0xAD => {
                 // XOR A, L
-                self.xor8(self.regs.l());
+                self.regs.set_a(self.alu.xor(self.regs.a(), self.regs.l()));
             }
             0xAE => {
                 // XOR A, (HL)
-                self.xor8(self.deref_hl());
+                self.regs.set_a(self.alu.xor(self.regs.a(), self.deref_hl()));
             }
             0xAF => {
                 // XOR A, A
-                self.xor8(self.regs.a());
+                self.regs.set_a(self.alu.xor(self.regs.a(), self.regs.a()));
             }
             0xB0 => {
                 // OR A, B
-                self.or8(self.regs.b());
+                self.regs.set_a(self.alu.or(self.regs.a(), self.regs.b()));
             }
             0xB1 => {
                 // OR A, C
-                self.or8(self.regs.c());
+                self.regs.set_a(self.alu.or(self.regs.a(), self.regs.c()));
             }
             0xB2 => {
                 // OR A, D
-                self.or8(self.regs.d());
+                self.regs.set_a(self.alu.or(self.regs.a(), self.regs.d()));
             }
             0xB3 => {
                 // OR A, E
-                self.or8(self.regs.e());
+                self.regs.set_a(self.alu.or(self.regs.a(), self.regs.e()));
             }
             0xB4 => {
                 // OR A, H
-                self.or8(self.regs.h());
+                self.regs.set_a(self.alu.or(self.regs.a(), self.regs.h()));
             }
             0xB5 => {
                 // OR A, L
-                self.or8(self.regs.l());
+                self.regs.set_a(self.alu.or(self.regs.a(), self.regs.l()));
             }
             0xB6 => {
                 // OR A, (HL)
-                self.or8(self.deref_hl());
+                self.regs.set_a(self.alu.or(self.regs.a(), self.deref_hl()));
             }
             0xB7 => {
                 // OR A, A
-                self.or8(self.regs.a());
+                self.regs.set_a(self.alu.or(self.regs.a(), self.regs.a()));
             }
             0xB8 => {
                 // CP A, B
-                self.cp8(self.regs.b());
+                self.alu.compare(self.regs.a(), self.regs.b());
             }
             0xB9 => {
                 // CP A, C
-                self.cp8(self.regs.c());
+                self.alu.compare(self.regs.a(), self.regs.c());
             }
             0xBA => {
                 // CP A, D
-                self.cp8(self.regs.d());
+                self.alu.compare(self.regs.a(), self.regs.d());
             }
             0xBB => {
                 // CP A, E
-                self.cp8(self.regs.e());
+                self.alu.compare(self.regs.a(), self.regs.e());
             }
             0xBC => {
                 // CP A, H
-                self.cp8(self.regs.h());
+                self.alu.compare(self.regs.a(), self.regs.h());
             }
             0xBD => {
                 // CP A, L
-                self.cp8(self.regs.l());
+                self.alu.compare(self.regs.a(), self.regs.l());
             }
             0xBE => {
                 // CP A, (HL)
-                self.cp8(self.deref_hl());
+                self.alu.compare(self.regs.a(), self.deref_hl());
             }
             0xBF => {
                 // CP A, A
-                self.cp8(self.regs.a());
+                self.alu.compare(self.regs.a(), self.regs.a());
             }
             0xC0 => {
                 // RET NZ
@@ -932,7 +900,7 @@ impl Cpu {
             }
             0xC6 => {
                 // ADD A, $00
-                self.add8(immediate8);
+                self.regs.set_a(self.alu.add(self.regs.a(), immediate8));
             }
             0xC7 => {
                 // RST $00
@@ -970,7 +938,7 @@ impl Cpu {
             }
             0xCE => {
                 // ADC A, $00
-                self.adc8(immediate8);
+                self.regs.set_a(self.alu.adc(self.regs.a(), immediate8));
             }
             0xCF => {
                 // RST $08
@@ -1007,7 +975,7 @@ impl Cpu {
             }
             0xD6 => {
                 // SUB A, $00
-                self.sub8(immediate8);
+                self.regs.set_a(self.alu.sub(self.regs.a(), immediate8));
             }
             0xD7 => {
                 // RST $10
@@ -1044,7 +1012,7 @@ impl Cpu {
             }
             0xDE => {
                 // SBC A, $00
-                self.sbc8(immediate8);
+                self.regs.set_a(self.alu.sbc(self.regs.a(), immediate8));
             }
             0xDF => {
                 // RST $18
@@ -1078,7 +1046,7 @@ impl Cpu {
             }
             0xE6 => {
                 // AND $00
-                self.and8(immediate8);
+                self.regs.set_a(self.alu.and(self.regs.a(), immediate8));
             }
             0xE7 => {
                 // RST $20
@@ -1086,13 +1054,7 @@ impl Cpu {
             }
             0xE8 => {
                 // ADD SP, $00
-                let mut alu16 = ALU16::default();
-                alu16.acc = self.regs.sp();
-                alu16.flags = self.alu8.flags;
-                alu16.add(((immediate8 as i8) as i16) as u16);
-
-                self.regs.set_sp(alu16.acc);
-                self.alu8.flags = alu16.flags;
+                self.regs.set_sp(self.alu.add16(self.regs.sp(), ((immediate8 as i8) as i16) as u16))
             }
             0xE9 => {
                 // JP HL
@@ -1113,7 +1075,7 @@ impl Cpu {
             }
             0xEE => {
                 // XOR $00
-                self.xor8(immediate8);
+                self.regs.set_a(self.alu.xor(self.regs.a(), immediate8));
             }
             0xEF => {
                 // RST $28
@@ -1148,7 +1110,7 @@ impl Cpu {
             }
             0xF6 => {
                 // OR $00
-                self.or8(immediate8);
+                self.regs.set_a(self.alu.or(self.regs.a(), immediate8));
             }
             0xF7 => {
                 // RST $30
@@ -1180,7 +1142,7 @@ impl Cpu {
             }
             0xFE => {
                 // CP $00
-                self.cp8(immediate8);
+                self.alu.compare(self.regs.a(), immediate8);
             }
             0xFF => {
                 // RST $38
@@ -1219,60 +1181,60 @@ impl Cpu {
 
     fn execute_cb_ext(&mut self, cb_code: u8) {
         let arg = self.read_cb_arg(cb_code);
-        self.alu8.acc = arg;
+        let mut ret = arg;
 
         match cb_code {
             0x00..=0x07 => {
                 // RLC
-                self.alu8.rlc();
+                ret = self.alu.rlc(arg);
             }
             0x08..=0x0F => {
                 // RRC
-                self.alu8.rrc();
+                ret = self.alu.rrc(arg);
             }
             0x10..=0x17 => {
                 // RL
-                self.alu8.rl();
+                ret = self.alu.rl(arg);
             }
             0x18..=0x1F => {
                 // RR
-                self.alu8.rr();
+                ret = self.alu.rr(arg);
             }
             0x20..=0x27 => {
                 // SLA
-                self.alu8.sl();
+                ret = self.alu.sla(arg);
             }
             0x28..=0x2F => {
                 // SRA
-                self.alu8.sr();
+                ret = self.alu.sra(arg);
             }
             0x30..=0x37 => {
                 // SWAP
-                self.alu8.nibble_swap();
+                ret = self.alu.nibble_swap(arg);
             }
             0x38..=0x3F => {
                 // SRL
-                self.alu8.srl();
+                ret = self.alu.srl(arg);
             }
             0x40..=0x7F => {
                 // BIT
                 let bit_index = (cb_code - 0x40) / 8;
-                self.alu8.test_bit(bit_index);
+                self.alu.test_bit(arg, bit_index);
             }
             0x80..=0xBF => {
                 // RES
                 let bit_index = (cb_code - 0x80) / 8;
-                self.alu8.reset_bit(bit_index);
+                ret = self.alu.reset_bit(arg, bit_index);
             }
             0xC0..=0xFF => {
                 // SET
                 let bit_index = (cb_code - 0xC0) / 8;
-                self.alu8.set_bit(bit_index);
+                ret = self.alu.set_bit(arg, bit_index);
             }
         }
 
-        if self.alu8.acc != arg {
-            self.write_cb_result(cb_code, self.alu8.acc);
+        if ret != arg {
+            self.write_cb_result(cb_code, ret);
         }
     }
 
@@ -1304,118 +1266,6 @@ impl Cpu {
         }
     }
 
-    fn add8(&mut self, arg: u8) {
-        self.alu8.acc = self.regs.a();
-        self.alu8.add(arg);
-        self.regs.set_a(self.alu8.acc);
-    }
-
-    fn adc8(&mut self, arg: u8) {
-        self.alu8.acc = self.regs.a();
-        self.alu8.adc(arg);
-        self.regs.set_a(self.alu8.acc);
-    }
-
-    fn sub8(&mut self, arg: u8) {
-        self.alu8.acc = self.regs.a();
-        self.alu8.sub(arg);
-        self.regs.set_a(self.alu8.acc);
-    }
-
-    fn sbc8(&mut self, arg: u8) {
-        self.alu8.acc = self.regs.a();
-        self.alu8.sbc(arg);
-        self.regs.set_a(self.alu8.acc);
-    }
-
-    fn and8(&mut self, arg: u8) {
-        self.alu8.acc = self.regs.a();
-        self.alu8.and(arg);
-        self.regs.set_a(self.alu8.acc);
-    }
-
-    fn or8(&mut self, arg: u8) {
-        self.alu8.acc = self.regs.a();
-        self.alu8.or(arg);
-        self.regs.set_a(self.alu8.acc);
-    }
-
-    fn xor8(&mut self, arg: u8) {
-        self.alu8.acc = self.regs.a();
-        self.alu8.xor(arg);
-        self.regs.set_a(self.alu8.acc);
-    }
-
-    fn inc8(&mut self, r_index: usize) {
-        self.alu8.acc = self.get_r8(r_index);
-        self.alu8.inc();
-        self.set_r8(r_index, self.alu8.acc);
-    }
-
-    fn dec8(&mut self, r_index: usize) {
-        self.alu8.acc = self.get_r8(r_index);
-        self.alu8.dec();
-        self.set_r8(r_index, self.alu8.acc);
-    }
-
-    fn inc16(&mut self, r_index: usize) {
-        assert!(r_index & 0x01 == 0);
-        let mut h = self.get_r8(r_index);
-        let mut l = self.get_r8(r_index + 1);
-
-        l = l.wrapping_add(1);
-        if l == 0 {
-            h = h.wrapping_add(1);
-        }
-
-        self.set_r8(r_index, h);
-        self.set_r8(r_index + 1, l);
-    }
-
-    fn dec16(&mut self, r_index: usize) {
-        assert!(r_index & 0x01 != 0 && r_index > Self::A && r_index <= Self::L);
-        let mut h = self.get_r8(r_index);
-        let mut l = self.get_r8(r_index + 1);
-
-        if l == 0 {
-            h = h.wrapping_sub(1);
-        }
-        l = l.wrapping_sub(1);
-
-        self.set_r8(r_index, h);
-        self.set_r8(r_index + 1, l);
-    }
-
-    fn rlc8(&mut self, r_index: usize) {
-        self.alu8.acc = self.get_r8(r_index);
-        self.alu8.rlc();
-        self.set_r8(r_index, self.alu8.acc);
-    }
-
-    fn rrc8(&mut self, r_index: usize) {
-        self.alu8.acc = self.get_r8(r_index);
-        self.alu8.rrc();
-        self.set_r8(r_index, self.alu8.acc);
-    }
-
-    fn rl8(&mut self, r_index: usize) {
-        self.alu8.acc = self.get_r8(r_index);
-        self.alu8.rl();
-        self.set_r8(r_index, self.alu8.acc);
-    }
-
-    fn rr8(&mut self, r_index: usize) {
-        self.alu8.acc = self.get_r8(r_index);
-        self.alu8.rr();
-        self.set_r8(r_index, self.alu8.acc);
-    }
-
-    fn cp8(&mut self, arg: u8) {
-        self.alu8.acc = self.regs.a();
-        self.alu8.compare(arg);
-        self.regs.set_a(self.alu8.acc);
-    }
-
     fn deref_bc(&mut self) -> u8 {
         self.read_byte(self.regs.bc())
     }
@@ -1430,13 +1280,13 @@ impl Cpu {
 
     fn deref_hli(&mut self) -> u8 {
         let ret = self.deref_hl();
-        self.inc16(Self::HL);
+        self.regs.set_hl(self.alu.inc16(self.regs.hl()));
         ret
     }
 
     fn deref_hld(&mut self) -> u8 {
         let ret = self.deref_hl();
-        self.dec16(Self::HL);
+        self.regs.set_hl(self.alu.dec16(self.regs.hl()));
         ret
     }
 
@@ -1448,7 +1298,7 @@ impl Cpu {
 
     fn push_af(&mut self) {
         let h: u8 = self.regs.a();
-        let l: u8 = self.alu8.flags.into();
+        let l: u8 = self.alu.flags.into();
         self.push_nn(h, l);
     }
 
@@ -1467,7 +1317,7 @@ impl Cpu {
         let (h, l) = self.pop_nn();
         self.regs.set_a(h);
         self.regs.set_f(l);
-        self.alu8.flags = Flags::from(l);
+        self.alu.flags = Flags::from(l);
     }
 
     fn pop_sp(&mut self) {
