@@ -10,7 +10,6 @@ use crate::cpu::asm::disassemble;
 use crate::cpu::asm::instruction_size;
 use crate::cpu::asm::instruction_ticks;
 use crate::cpu::alu::Alu;
-use crate::cpu::flags::Flags;
 use crate::cpu::regs::Regs;
 
 use crate::mmu::Mmu;
@@ -32,20 +31,6 @@ pub struct Cpu {
 
 #[allow(dead_code)]
 impl Cpu {
-    const A: usize = 0; // r8 A index
-    const F: usize = 1; // r8 F index
-    const B: usize = 2; // r8 B index
-    const C: usize = 3; // r8 C index
-    const D: usize = 4; // r8 D index
-    const E: usize = 5; // r8 E index
-    const H: usize = 6; // r8 H index
-    const L: usize = 7; // r8 L index
-
-    const AF: usize = Self::A; // r16 AF index
-    const BC: usize = Self::B; // r16 BC index
-    const DE: usize = Self::D; // r16 DE index
-    const HL: usize = Self::H; // r16 HL index
-
     #[inline(always)]
     pub fn carry(&self) -> bool {
         self.alu.flags.carry()
@@ -133,7 +118,7 @@ impl Cpu {
             }
             0x0A => {
                 // LD A, (BC)
-                let data = self.deref_bc();
+                let data = self.read_bc_ref();
                 self.regs.set_a(data);
             }
             0x0B => {
@@ -197,7 +182,7 @@ impl Cpu {
             }
             0x1A => {
                 // LD A, (DE)
-                self.regs.set_a(self.deref_de());
+                self.regs.set_a(self.read_de_ref());
             }
             0x1B => {
                 // DEC DE
@@ -231,10 +216,7 @@ impl Cpu {
             }
             0x22 => {
                 // LDI (HL), A
-                let addr = self.regs.hl();
-                let data = self.regs.a();
-                self.write_byte(addr, data);
-                self.regs.set_hl(self.alu.inc16(addr));
+                self.write_hl_ref_and_increment_hl(self.regs.a());
             }
             0x23 => {
                 // INC HL
@@ -268,7 +250,7 @@ impl Cpu {
             }
             0x2A => {
                 // LDI A, (HL)
-                let data = self.deref_hli();
+                let data = self.read_hl_ref_and_increment_hl();
                 self.regs.set_a(data);
             }
             0x2B => {
@@ -303,7 +285,7 @@ impl Cpu {
             }
             0x32 => {
                 // LDD (HL), A
-                self.write_byte(self.regs.hl(), self.regs.a());
+                self.write_hl_ref_and_decrement_hl(self.regs.a());
             }
             0x33 => {
                 // INC SP
@@ -341,7 +323,7 @@ impl Cpu {
             }
             0x3A => {
                 // LDD A, (HL)
-                let data = self.deref_hld();
+                let data = self.read_hl_ref_and_decrement_hl();
                 self.regs.set_a(data);
             }
             0x3B => {
@@ -389,7 +371,7 @@ impl Cpu {
             }
             0x46 => {
                 // LD B, (HL)
-                self.regs.set_b(self.deref_hl());
+                self.regs.set_b(self.read_hl_ref());
             }
             0x47 => {
                 // LD B, A
@@ -420,7 +402,7 @@ impl Cpu {
             }
             0x4E => {
                 // LD C, (HL)
-                self.regs.set_c(self.deref_hl());
+                self.regs.set_c(self.read_hl_ref());
             }
             0x4F => {
                 // LD C, A
@@ -451,7 +433,7 @@ impl Cpu {
             }
             0x56 => {
                 // LD D, (HL)
-                self.regs.set_d(self.deref_hl());
+                self.regs.set_d(self.read_hl_ref());
             }
             0x57 => {
                 // LD D, A
@@ -482,7 +464,7 @@ impl Cpu {
             }
             0x5E => {
                 // LD E, (HL)
-                self.regs.set_e(self.deref_hl());
+                self.regs.set_e(self.read_hl_ref());
             }
             0x5F => {
                 // LD E, A
@@ -513,7 +495,7 @@ impl Cpu {
             }
             0x66 => {
                 // LD H, (HL)
-                self.regs.set_h(self.deref_hl());
+                self.regs.set_h(self.read_hl_ref());
             }
             0x67 => {
                 // LD H, A
@@ -544,7 +526,7 @@ impl Cpu {
             }
             0x6E => {
                 // LD L, (HL)
-                self.regs.set_l(self.deref_hl());
+                self.regs.set_l(self.read_hl_ref());
             }
             0x6F => {
                 // LD L, A
@@ -607,7 +589,7 @@ impl Cpu {
             }
             0x7E => {
                 // LD A, (HL)
-                self.regs.set_a(self.deref_hl());
+                self.regs.set_a(self.read_hl_ref());
             }
             0x7F => {
                 // LD A, A
@@ -638,7 +620,7 @@ impl Cpu {
             }
             0x86 => {
                 // ADD A, (HL)
-                self.regs.set_a(self.alu.add(self.regs.a(), self.deref_hl()));
+                self.regs.set_a(self.alu.add(self.regs.a(), self.read_hl_ref()));
             }
             0x87 => {
                 // ADD A, A
@@ -670,7 +652,7 @@ impl Cpu {
             }
             0x8E => {
                 // ADC A, (HL)
-                self.regs.set_a(self.alu.adc(self.regs.a(), self.deref_hl()));
+                self.regs.set_a(self.alu.adc(self.regs.a(), self.read_hl_ref()));
             }
             0x8F => {
                 // ADC A, A
@@ -702,7 +684,7 @@ impl Cpu {
             }
             0x96 => {
                 // SUB A, (HL)
-                self.regs.set_a(self.alu.sub(self.regs.a(), self.deref_hl()));
+                self.regs.set_a(self.alu.sub(self.regs.a(), self.read_hl_ref()));
             }
             0x97 => {
                 // SUB A, A
@@ -734,7 +716,7 @@ impl Cpu {
             }
             0x9E => {
                 // SBC A, (HL)
-                self.regs.set_a(self.alu.sbc(self.regs.a(), self.deref_hl()));
+                self.regs.set_a(self.alu.sbc(self.regs.a(), self.read_hl_ref()));
             }
             0x9F => {
                 // SBC A, A
@@ -766,7 +748,7 @@ impl Cpu {
             }
             0xA6 => {
                 // AND A, (HL)
-                self.regs.set_a(self.alu.and(self.regs.a(), self.deref_hl()));
+                self.regs.set_a(self.alu.and(self.regs.a(), self.read_hl_ref()));
             }
             0xA7 => {
                 // AND A, A
@@ -798,7 +780,7 @@ impl Cpu {
             }
             0xAE => {
                 // XOR A, (HL)
-                self.regs.set_a(self.alu.xor(self.regs.a(), self.deref_hl()));
+                self.regs.set_a(self.alu.xor(self.regs.a(), self.read_hl_ref()));
             }
             0xAF => {
                 // XOR A, A
@@ -830,7 +812,7 @@ impl Cpu {
             }
             0xB6 => {
                 // OR A, (HL)
-                self.regs.set_a(self.alu.or(self.regs.a(), self.deref_hl()));
+                self.regs.set_a(self.alu.or(self.regs.a(), self.read_hl_ref()));
             }
             0xB7 => {
                 // OR A, A
@@ -862,7 +844,7 @@ impl Cpu {
             }
             0xBE => {
                 // CP A, (HL)
-                self.alu.compare(self.regs.a(), self.deref_hl());
+                self.alu.compare(self.regs.a(), self.read_hl_ref());
             }
             0xBF => {
                 // CP A, A
@@ -876,7 +858,8 @@ impl Cpu {
             }
             0xC1 => {
                 // POP BC
-                self.pop_r16(Self::BC);
+                let bc = self.pop();
+                self.regs.set_bc(bc);
             }
             0xC2 => {
                 // JP NZ $0000
@@ -896,7 +879,7 @@ impl Cpu {
             }
             0xC5 => {
                 // PUSH BC
-                self.push_r16(Self::BC);
+                self.push(self.regs.bc());
             }
             0xC6 => {
                 // ADD A, $00
@@ -952,7 +935,8 @@ impl Cpu {
             }
             0xD1 => {
                 // POP DE
-                self.pop_r16(Self::DE);
+                let de = self.pop();
+                self.regs.set_de(de);
             }
             0xD2 => {
                 // JP NC $0000
@@ -971,7 +955,7 @@ impl Cpu {
             }
             0xD5 => {
                 // PUSH DE
-                self.push_r16(Self::DE)
+                self.push(self.regs.de());
             }
             0xD6 => {
                 // SUB A, $00
@@ -1026,7 +1010,8 @@ impl Cpu {
             }
             0xE1 => {
                 // POP HL
-                self.pop_r16(Self::HL);
+                let hl = self.pop();
+                self.regs.set_hl(hl);
             }
             0xE2 => {
                 // LDH (C), A
@@ -1042,7 +1027,7 @@ impl Cpu {
             }
             0xE5 => {
                 // PUSH HL
-                self.push_r16(Self::HL);
+                self.push(self.regs.hl());
             }
             0xE6 => {
                 // AND $00
@@ -1089,7 +1074,9 @@ impl Cpu {
             }
             0xF1 => {
                 // POP AF
-                self.pop_af();
+                let af = self.pop();
+                self.regs.set_af(af);
+                self.alu.flags = self.regs.f().into();
             }
             0xF2 => {
                 // LD A, ($FF00+C)
@@ -1106,7 +1093,8 @@ impl Cpu {
             }
             0xF5 => {
                 // PUSH AF
-                self.push_af();
+                self.regs.set_f(self.alu.flags.into());
+                self.push(self.regs.af());
             }
             0xF6 => {
                 // OR $00
@@ -1118,8 +1106,7 @@ impl Cpu {
             }
             0xF8 => {
                 // LD HL,SP+$00
-                let addr = self.regs.sp().wrapping_add((immediate8 as i8) as u16);
-                self.regs.set_hl(addr);
+                self.regs.set_hl(self.regs.sp().wrapping_add((immediate8 as i8) as u16));
             }
             0xF9 => {
                 // LD SP, HL
@@ -1151,36 +1138,19 @@ impl Cpu {
         }
     }
 
-    fn read_cb_arg(&mut self, cb_code: u8) -> u8 {
-        match cb_code & 0x7 {
+    fn execute_cb_ext(&mut self, cb_code: u8) {
+        let arg = match cb_code & 0x7 {
             0x0 => self.regs.b(),
             0x1 => self.regs.c(),
             0x2 => self.regs.d(),
             0x3 => self.regs.e(),
             0x4 => self.regs.h(),
             0x5 => self.regs.l(),
-            0x6 => self.deref_hl(),
+            0x6 => self.read_hl_ref(),
             0x7 => self.regs.a(),
-            _ => panic!("Impossible Case {} {}", cb_code, cb_code & 0x7)
-        }
-    }
+            _ => panic!()
+        };
 
-    fn write_cb_result(&mut self, cb_code: u8, result: u8) {
-        match cb_code & 0x7 {
-            0x0 => self.regs.set_a(result),
-            0x1 => self.regs.set_c(result),
-            0x2 => self.regs.set_d(result),
-            0x3 => self.regs.set_e(result),
-            0x4 => self.regs.set_h(result),
-            0x5 => self.regs.set_l(result),
-            0x6 => { self.write_byte(self.regs.hl(), result); }
-            0x7 => self.regs.set_a(result),
-            _ => panic!("Impossible Case {} {}", cb_code, cb_code & 0x7)
-        }
-    }
-
-    fn execute_cb_ext(&mut self, cb_code: u8) {
-        let arg = self.read_cb_arg(cb_code);
         let mut ret = arg;
 
         match cb_code {
@@ -1234,109 +1204,76 @@ impl Cpu {
         }
 
         if ret != arg {
-            self.write_cb_result(cb_code, ret);
+            match cb_code & 0x7 {
+                0x0 => self.regs.set_a(ret),
+                0x1 => self.regs.set_c(ret),
+                0x2 => self.regs.set_d(ret),
+                0x3 => self.regs.set_e(ret),
+                0x4 => self.regs.set_h(ret),
+                0x5 => self.regs.set_l(ret),
+                0x6 => { self.write_byte(self.regs.hl(), ret); }
+                0x7 => self.regs.set_a(ret),
+                _ => panic!()
+            }
         }
     }
 
-    fn get_r8(&self, r_index: usize) -> u8 {
-        match r_index {
-            Self::A => self.regs.a(),
-            Self::F => self.regs.f(),
-            Self::B => self.regs.b(),
-            Self::C => self.regs.c(),
-            Self::D => self.regs.d(),
-            Self::E => self.regs.e(),
-            Self::H => self.regs.h(),
-            Self::L => self.regs.l(),
-            _ => panic!("Invalid R8"),
-        }
-    }
-
-    fn set_r8(&mut self, r_index: usize, data: u8) {
-        match r_index {
-            Self::A => self.regs.set_a(data),
-            Self::F => self.regs.set_f(data),
-            Self::B => self.regs.set_b(data),
-            Self::C => self.regs.set_c(data),
-            Self::D => self.regs.set_d(data),
-            Self::E => self.regs.set_e(data),
-            Self::H => self.regs.set_h(data),
-            Self::L => self.regs.set_l(data),
-            _ => panic!("Invalid R8"),
-        }
-    }
-
-    fn deref_bc(&mut self) -> u8 {
+    fn read_bc_ref(&mut self) -> u8 {
         self.read_byte(self.regs.bc())
     }
 
-    fn deref_de(&self) -> u8 {
+    fn read_de_ref(&self) -> u8 {
         self.read_byte(self.regs.de())
     }
 
-    fn deref_hl(&self) -> u8 {
+    fn read_hl_ref(&self) -> u8 {
         self.read_byte(self.regs.hl())
     }
 
-    fn deref_hli(&mut self) -> u8 {
-        let ret = self.deref_hl();
+    fn read_hl_ref_and_increment_hl(&mut self) -> u8 {
+        let ret = self.read_hl_ref();
         self.regs.set_hl(self.alu.inc16(self.regs.hl()));
         ret
     }
 
-    fn deref_hld(&mut self) -> u8 {
-        let ret = self.deref_hl();
+    fn read_hl_ref_and_decrement_hl(&mut self) -> u8 {
+        let ret = self.read_hl_ref();
         self.regs.set_hl(self.alu.dec16(self.regs.hl()));
         ret
     }
 
-    fn push_r16(&mut self, r_index: usize) {
-        let h: u8 = self.get_r8(r_index + 0);
-        let l: u8 = self.get_r8(r_index + 1);
-        self.push_nn(h, l);
+    fn write_hl_ref(&mut self, data: u8) {
+        self.write_byte(self.regs.hl(), data);
     }
 
-    fn push_af(&mut self) {
-        let h: u8 = self.regs.a();
-        let l: u8 = self.alu.flags.into();
-        self.push_nn(h, l);
+    fn write_hl_ref_and_increment_hl(&mut self, data: u8) {
+        let addr = self.regs.hl();
+        self.write_byte(addr, data);
+        self.regs.set_hl(self.alu.inc16(addr));
     }
 
-    fn push_sp(&mut self) {
-        let bytes = self.regs.sp().to_be_bytes();
-        self.push_nn(bytes[0], bytes[1]);
+    fn write_hl_ref_and_decrement_hl(&mut self, data: u8) {
+        let addr = self.regs.hl();
+        self.write_byte(addr, data);
+        self.regs.set_hl(self.alu.dec16(addr));
     }
 
-    fn push_nn(&mut self, h: u8, l: u8) {
-        self.write_byte(self.regs.sp(), h);
-        self.write_byte(self.regs.sp().wrapping_sub(1), l);
-        self.regs.set_sp(self.regs.sp().wrapping_sub(2));
+    fn push(&mut self, r16: u16) {
+        let be_bytes = r16.to_be_bytes();
+
+        let sp = self.regs.sp();
+        self.write_byte(sp, be_bytes[0]);
+        self.write_byte(sp.wrapping_sub(1), be_bytes[1]);
+
+        self.regs.set_sp(sp.wrapping_sub(2));
     }
 
-    fn pop_af(&mut self) {
-        let (h, l) = self.pop_nn();
-        self.regs.set_a(h);
-        self.regs.set_f(l);
-        self.alu.flags = Flags::from(l);
-    }
-
-    fn pop_sp(&mut self) {
-        let (h, l) = self.pop_nn();
-        self.regs.set_sp(u16::from_be_bytes([h, l]));
-    }
-
-    fn pop_r16(&mut self, r_index: usize) {
-        let (h, l) = self.pop_nn();
-        self.set_r8(r_index, h);
-        self.set_r8(r_index + 1, l);
-    }
-
-    fn pop_nn(&mut self) -> (u8, u8) {
+    fn pop(&mut self) -> u16 {
         let sp = self.regs.sp();
         let l = self.read_byte(sp.wrapping_add(1));
         let h = self.read_byte(sp.wrapping_add(2));
         self.regs.set_sp(sp.wrapping_add(2));
-        (h, l)
+        u16::from_be_bytes([h, l])
     }
 
     fn absolute_jump(&mut self, addr: u16) {
@@ -1348,14 +1285,12 @@ impl Cpu {
     }
 
     fn begin_call(&mut self, call_addr: u16) {
-        let ret_addr_bytes = self.next_pc.to_be_bytes();
-        self.push_nn(ret_addr_bytes[0], ret_addr_bytes[1]);
+        self.push(self.next_pc);
         self.next_pc = call_addr;
     }
 
     fn end_call(&mut self) {
-        let (l, h) = self.pop_nn();
-        self.next_pc = u16::from_be_bytes([l, h]);
+        self.next_pc = self.pop();
     }
 }
 
