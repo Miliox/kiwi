@@ -1,7 +1,6 @@
 use crate::cart::Cartridge;
 use crate::cpu::Cpu;
 use crate::mmu::Mmu;
-use crate::mmu::NullMemory;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -10,7 +9,6 @@ pub struct MainBoard {
     cpu: Rc<RefCell<Cpu>>,
     mmu: Rc<RefCell<Mmu>>,
     cart: Rc<RefCell<Cartridge>>,
-    hwio: Rc<RefCell<NullMemory>>,
     clock: u64,
 }
 
@@ -21,12 +19,10 @@ impl MainBoard {
 
         let cart = Rc::new(RefCell::new(Cartridge::default()));
 
-        let hwio = Rc::new(RefCell::new(NullMemory::default()));
-
         let mmu  = Rc::new(RefCell::new(
             Mmu::new(cart.borrow().rom.clone(),
                      cart.borrow().ram.clone(),
-                     hwio.clone())));
+                     cpu.clone())));
 
         cpu.borrow_mut().mmu = Some(mmu.clone());
 
@@ -35,7 +31,6 @@ impl MainBoard {
             mmu: mmu,
             cart: cart,
             clock: 0,
-            hwio: hwio,
         }
     }
 

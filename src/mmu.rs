@@ -1,4 +1,5 @@
 use crate::bios::DMG_BIOS;
+use crate::cpu::Cpu;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -91,7 +92,7 @@ pub struct Mmu {
 
     /// Hardware IO
     /// - $FF00-$FF7F, $FFFF
-    hwio: Rc<RefCell<NullMemory>>,
+    cpu: Rc<RefCell<Cpu>>,
 
     /// High RAM (Zero Page)
     /// - $FF80-$FFFE
@@ -102,7 +103,7 @@ impl Mmu {
     pub fn new(
             crom: Rc<RefCell<FlatMemory>>,
             cram: Rc<RefCell<FlatMemory>>,
-            hwio: Rc<RefCell<NullMemory>>) -> Self {
+            cpu:  Rc<RefCell<Cpu>>) -> Self {
         Self {
             bios_enable: true,
             crom: crom,
@@ -110,7 +111,7 @@ impl Mmu {
             cram: cram,
             iram: Box::new([0; 0x2000]),
             oram: Box::new([0; 160]),
-            hwio: hwio,
+            cpu: cpu,
             hram: Box::new([0; 127]),
         }
     }
@@ -129,9 +130,11 @@ impl Memory for Mmu {
             0xC000..=0xDFFF => self.iram[(addr - 0xC000u16) as usize],
             0xE000..=0xFDFF => self.iram[(addr - 0xE000u16) as usize],
             0xFE00..=0xFE9F => self.oram[(addr - 0xFE00u16) as usize],
-            0xFF00..=0xFF7F => self.hwio.borrow().read_byte(addr - 0xFF00u16),
+            0xFF00..=0xFF7F => {
+                0
+            }
             0xFF80..=0xFFFE => self.hram[(addr - 0xFF80u16) as usize],
-            0xFFFF => self.hwio.borrow().read_byte(128),
+            0xFFFF => self.cpu.borrow().interrupt_enable_flags(),
             _ => 0
         }
     }
@@ -154,13 +157,13 @@ impl Memory for Mmu {
                 self.oram[(addr - 0xFE00) as usize] = data;
             }
             0xFF00..=0xFF7F => {
-                // self.hwio.read_byte(addr - 0xFF00);
+
             }
             0xFF80..=0xFFFE => {
                 self.hram[(addr - 0xFF80) as usize] = data;
             }
             0xFFFF => {
-                self.hwio.borrow_mut().write_byte(128, data);
+                self.cpu.borrow_mut().set_interrupt_enable_flags(data)
             }
             _ => return false
         }

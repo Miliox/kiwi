@@ -18,13 +18,13 @@ use crate::mmu::Memory;
 #[allow(dead_code)]
 #[derive(Default)]
 pub struct Cpu {
-    alu: Alu,    // Arithmetic Logic Unit
+    alu: Alu,      // Arithmetic Logic Unit
     regs: Regs,    // Registers
     next_pc: u16,  // next program counter position
 
-    clock: u64,       // accumulated clock counter
-    int_enable: bool, // interrupt enable flag
-    int_flags:  u8,   // interrupt flags flag
+    clock: u64,                 // accumulated clock counter
+    interrupt_enable: bool,     // interrupt enable flag
+    interrupt_enable_flags: u8, // interrupt flags flag
 
     pub mmu: Option<Rc<RefCell<Mmu>>>, // Reference to Memory Management Unit
 }
@@ -51,6 +51,16 @@ impl Cpu {
         self.alu.flags.zero()
     }
 
+    #[inline(always)]
+    pub fn interrupt_enable_flags(&self) -> u8 {
+        self.interrupt_enable_flags
+    }
+
+    #[inline(always)]
+    pub fn set_interrupt_enable_flags(&mut self, data: u8) {
+        self.interrupt_enable_flags = data;
+    }
+
     pub fn read_byte(&self, addr: u16) -> u8 {
         self.mmu.as_ref().unwrap().borrow().read_byte(addr)
     }
@@ -65,7 +75,7 @@ impl Cpu {
         let immediate8: u8 = self.read_byte(pc + 1);
         let immediate16: u16 = u16::from_le_bytes([immediate8, self.read_byte(pc + 2)]);
 
-        println!("{:<15}; ${:04x}; {:02x?}", disassemble(opcode, immediate8, immediate16), pc, self.regs);
+        println!("${:04x} {:<15} {:04x?}", pc, disassemble(opcode, immediate8, immediate16), self.regs);
 
         self.next_pc = pc + instruction_size(opcode);
         self.execute(opcode, immediate8, immediate16);
@@ -974,7 +984,7 @@ impl Cpu {
             0xD9 => {
                 // RETI
                 self.end_call();
-                self.int_enable = true;
+                self.interrupt_enable = true;
             }
             0xDA => {
                 // JP C $0000
@@ -1086,7 +1096,7 @@ impl Cpu {
             }
             0xF3 => {
                 // DI
-                self.int_enable = false;
+                self.interrupt_enable = false;
             }
             0xF4 => {
                 // [F4] - INVALID
@@ -1119,7 +1129,7 @@ impl Cpu {
             }
             0xFB => {
                 // EI
-                self.int_enable = true;
+                self.interrupt_enable = true;
             }
             0xFC => {
                 // [FC] - INVALID;
