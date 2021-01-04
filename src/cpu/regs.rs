@@ -71,3 +71,24 @@ impl Regs {
         self.pc = r;
     }
 }
+
+impl std::fmt::Debug for Regs {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Regs")
+         .field("a", &self.a())
+         .field("f", &self.f())
+         .field("b", &self.b())
+         .field("c", &self.c())
+         .field("d", &self.d())
+         .field("e", &self.e())
+         .field("h", &self.h())
+         .field("l", &self.l())
+         .field("af", &self.af())
+         .field("bc", &self.bc())
+         .field("de", &self.de())
+         .field("hl", &self.hl())
+         .field("sp", &self.sp())
+         .field("pc", &self.pc())
+         .finish()
+    }
+}

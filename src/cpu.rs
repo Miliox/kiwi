@@ -65,7 +65,7 @@ impl Cpu {
         let immediate8: u8 = self.read_byte(pc + 1);
         let immediate16: u16 = u16::from_le_bytes([immediate8, self.read_byte(pc + 2)]);
 
-        println!("{:<15}; ${:04x}", disassemble(opcode, immediate8, immediate16), pc);
+        println!("{:<15}; ${:04x}; {:02x?}", disassemble(opcode, immediate8, immediate16), pc, self.regs);
 
         self.next_pc = pc + instruction_size(opcode);
         self.execute(opcode, immediate8, immediate16);
