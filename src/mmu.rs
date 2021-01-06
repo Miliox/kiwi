@@ -1,5 +1,6 @@
 use crate::bios::DMG_BIOS;
 use crate::cpu::Cpu;
+use crate::timer::Timer;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -8,13 +9,13 @@ pub trait Memory {
     fn read_byte(&self, addr: u16) -> u8;
 
     // Write a single byte to memory
-    fn write_byte(&mut self, addr: u16, data: u8) -> bool;
+    fn write_byte(&mut self, addr: u16, data: u8);
 
     // Read a word from memory
     fn read_word(&self, addr: u16) -> u16;
 
     // Write a word into memory
-    fn write_word(&mut self, addr: u16, data: u16) -> bool;
+    fn write_word(&mut self, addr: u16, data: u16);
 }
 
 pub struct FlatMemory {
@@ -32,14 +33,10 @@ impl Memory for FlatMemory {
         }
     }
 
-    fn write_byte(&mut self, addr: u16, data: u8) -> bool {
+    fn write_byte(&mut self, addr: u16, data: u8) {
         let addr: usize = addr.into();
-        match self.writable && addr < self.memory.len() {
-            true => {
-                self.memory[addr] = data;
-                true
-            }
-            false => false
+        if self.writable && addr < self.memory.len() {
+            self.memory[addr] = data;
         }
     }
 
@@ -47,9 +44,10 @@ impl Memory for FlatMemory {
         u16::from_le_bytes([self.read_byte(addr), self.read_byte(addr + 1)])
     }
 
-    fn write_word(&mut self, addr: u16, data: u16) -> bool {
+    fn write_word(&mut self, addr: u16, data: u16) {
         let le_bytes = data.to_le_bytes();
-        self.write_byte(addr, le_bytes[0]) && self.write_byte(addr + 1, le_bytes[1])
+        self.write_byte(addr, le_bytes[0]);
+        self.write_byte(addr + 1, le_bytes[1]);
     }
 }
 
@@ -59,9 +57,9 @@ pub struct NullMemory {
 
 impl Memory for NullMemory {
     fn read_byte(&self, _addr: u16) -> u8 { 0 }
-    fn write_byte(&mut self, _addr: u16, _data: u8) -> bool { false }
+    fn write_byte(&mut self, _addr: u16, _data: u8) { }
     fn read_word(&self, _addr: u16) -> u16 { 0 }
-    fn write_word(&mut self, _addr: u16, _data: u16) -> bool { false }
+    fn write_word(&mut self, _addr: u16, _data: u16) { }
 }
 
 pub struct Mmu {
@@ -93,6 +91,7 @@ pub struct Mmu {
     /// Hardware IO
     /// - $FF00-$FF7F, $FFFF
     cpu: Rc<RefCell<Cpu>>,
+    timer: Rc<RefCell<Timer>>,
 
     /// High RAM (Zero Page)
     /// - $FF80-$FFFE
@@ -103,7 +102,8 @@ impl Mmu {
     pub fn new(
             crom: Rc<RefCell<FlatMemory>>,
             cram: Rc<RefCell<FlatMemory>>,
-            cpu:  Rc<RefCell<Cpu>>) -> Self {
+            cpu:  Rc<RefCell<Cpu>>,
+            timer: Rc<RefCell<Timer>>) -> Self {
         Self {
             bios_enable: true,
             crom: crom,
@@ -112,6 +112,7 @@ impl Mmu {
             iram: Box::new([0; 0x2000]),
             oram: Box::new([0; 160]),
             cpu: cpu,
+            timer: timer,
             hram: Box::new([0; 127]),
         }
     }
@@ -131,7 +132,13 @@ impl Memory for Mmu {
             0xE000..=0xFDFF => self.iram[(addr - 0xE000u16) as usize],
             0xFE00..=0xFE9F => self.oram[(addr - 0xFE00u16) as usize],
             0xFF00..=0xFF7F => {
-                0
+                match addr {
+                    0xFF04 => self.timer.borrow().divider(),
+                    0xFF05 => self.timer.borrow().counter(),
+                    0xFF06 => self.timer.borrow().modulo(),
+                    0xFF07 => self.timer.borrow().control(),
+                    _ => 0
+                }
             }
             0xFF80..=0xFFFE => self.hram[(addr - 0xFF80u16) as usize],
             0xFFFF => self.cpu.borrow().interrupt_enable_flags(),
@@ -139,7 +146,7 @@ impl Memory for Mmu {
         }
     }
 
-    fn write_byte(&mut self, addr: u16, data: u8) -> bool {
+    fn write_byte(&mut self, addr: u16, data: u8) {
         match addr {
             0x8000..=0x9FFF =>  {
                 self.vram[(addr - 0x8000) as usize] = data;
@@ -157,7 +164,21 @@ impl Memory for Mmu {
                 self.oram[(addr - 0xFE00) as usize] = data;
             }
             0xFF00..=0xFF7F => {
-
+                match addr {
+                    0xFF04 => self.timer.borrow_mut().reset_divider(),
+                    0xFF05 => self.timer.borrow_mut().set_counter(data),
+                    0xFF06 => self.timer.borrow_mut().set_modulo(data),
+                    0xFF07 => self.timer.borrow_mut().set_control(data),
+                    0xFF46 => {
+                        if data <= 0xF1 {
+                            let src = u16::from_be_bytes([data, 0x00]);
+                            for i in 0..160 {
+                                self.oram[i] = self.read_byte(src + i as u16)
+                            }
+                        }
+                    }
+                    _ => { }
+                }
             }
             0xFF80..=0xFFFE => {
                 self.hram[(addr - 0xFF80) as usize] = data;
@@ -165,17 +186,17 @@ impl Memory for Mmu {
             0xFFFF => {
                 self.cpu.borrow_mut().set_interrupt_enable_flags(data)
             }
-            _ => return false
+            _ => { }
         }
-        return true
     }
 
     fn read_word(&self, addr: u16) -> u16 {
         u16::from_le_bytes([self.read_byte(addr), self.read_byte(addr + 1)])
     }
 
-    fn write_word(&mut self, addr: u16, data: u16) -> bool {
+    fn write_word(&mut self, addr: u16, data: u16) {
         let le_bytes = data.to_le_bytes();
-        self.write_byte(addr, le_bytes[0]) && self.write_byte(addr + 1, le_bytes[1])
+        self.write_byte(addr, le_bytes[0]);
+        self.write_byte(addr + 1, le_bytes[1]);
     }
 }

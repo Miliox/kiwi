@@ -1,13 +1,16 @@
 #[macro_use]
 extern crate bitflags;
 
+mod ticks;
+
 mod cpu;
 
 mod bios;
 mod cart;
-
 mod gpu;
 mod mmu;
+
+mod timer;
 mod mainboard;
 
 use mainboard::MainBoard;

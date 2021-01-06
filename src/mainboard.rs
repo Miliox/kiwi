@@ -1,6 +1,8 @@
 use crate::cart::Cartridge;
 use crate::cpu::Cpu;
 use crate::mmu::Mmu;
+use crate::timer::Timer;
+use crate::ticks::TickConsumer;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -9,6 +11,7 @@ pub struct MainBoard {
     cpu: Rc<RefCell<Cpu>>,
     mmu: Rc<RefCell<Mmu>>,
     cart: Rc<RefCell<Cartridge>>,
+    timer: Rc<RefCell<Timer>>,
     clock: u64,
 }
 
@@ -19,10 +22,13 @@ impl MainBoard {
 
         let cart = Rc::new(RefCell::new(Cartridge::default()));
 
+        let timer = Rc::new(RefCell::new(Timer::default()));
+
         let mmu  = Rc::new(RefCell::new(
             Mmu::new(cart.borrow().rom.clone(),
                      cart.borrow().ram.clone(),
-                     cpu.clone())));
+                     cpu.clone(),
+                     timer.clone())));
 
         cpu.borrow_mut().mmu = Some(mmu.clone());
 
@@ -30,6 +36,7 @@ impl MainBoard {
             cpu: cpu,
             mmu: mmu,
             cart: cart,
+            timer: timer,
             clock: 0,
         }
     }
@@ -39,7 +46,11 @@ impl MainBoard {
     }
 
     pub fn step(&mut self) {
-        self.clock += self.cpu.borrow_mut().cycle();
+        let ticks = self.cpu.borrow_mut().cycle();
+
+        self.timer.borrow_mut().sync(ticks);
+
+        self.clock += ticks;
     }
 
     pub fn print_cartridge_info(&self) {
