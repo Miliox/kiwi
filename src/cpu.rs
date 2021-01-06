@@ -1,6 +1,7 @@
 pub mod asm;
 pub mod alu;
 pub mod flags;
+pub mod interrupts;
 pub mod regs;
 
 use std::rc::Rc;
@@ -11,6 +12,7 @@ use crate::cpu::asm::instruction_size;
 use crate::cpu::asm::instruction_ticks;
 use crate::cpu::alu::Alu;
 use crate::cpu::regs::Regs;
+use crate::cpu::interrupts::Interrupts;
 
 use crate::mmu::Mmu;
 use crate::mmu::Memory;
@@ -22,9 +24,9 @@ pub struct Cpu {
     regs: Regs,    // Registers
     next_pc: u16,  // next program counter position
 
-    clock: u64,                 // accumulated clock counter
     interrupt_enable: bool,     // interrupt enable flag
-    interrupt_enable_flags: u8, // interrupt flags flag
+    enabled_interrupts: Interrupts,
+    triggered_interrupts: Interrupts,
 
     pub mmu: Option<Rc<RefCell<Mmu>>>, // Reference to Memory Management Unit
 }
@@ -52,13 +54,25 @@ impl Cpu {
     }
 
     #[inline(always)]
-    pub fn interrupt_enable_flags(&self) -> u8 {
-        self.interrupt_enable_flags
+    pub fn enabled_interrupts(&self) -> u8 {
+        self.enabled_interrupts.into()
     }
 
     #[inline(always)]
-    pub fn set_interrupt_enable_flags(&mut self, data: u8) {
-        self.interrupt_enable_flags = data;
+    pub fn set_enabled_interrupts(&mut self, data: u8) {
+        self.enabled_interrupts = data.into();
+    }
+
+    pub fn triggered_interrupts(&self) -> u8 {
+        self.triggered_interrupts.into()
+    }
+
+    pub fn set_triggered_interrupts(&mut self, data: u8) {
+        self.triggered_interrupts = data.into();
+    }
+
+    pub fn set_timer_overflow_interrupt_triggered(&mut self) {
+        self.triggered_interrupts.set_timer_overflow();
     }
 
     pub fn read_byte(&self, addr: u16) -> u8 {

@@ -1,0 +1,23 @@
+bitflags! {
+    #[derive(Default)]
+    pub struct Interrupts: u8 {
+        const VBLANK = 0b0000_0001;
+        const LCDC   = 0b0000_0010;
+        const TIMER  = 0b0000_0100;
+        const SERIAL = 0b0000_1000;
+        const HL_PIN = 0b0001_0000;
+        const UNUSED = 0b1110_0000;
+    }
+}
+
+impl From<u8> for Interrupts {
+    fn from(value: u8) -> Self {
+        Interrutps::from_bits(value).unwrap()
+    }
+}
+
+impl Into<u8> for Interrupts {
+    fn into(self) -> u8 {
+        self.bits
+    }
+}

@@ -137,11 +137,12 @@ impl Memory for Mmu {
                     0xFF05 => self.timer.borrow().counter(),
                     0xFF06 => self.timer.borrow().modulo(),
                     0xFF07 => self.timer.borrow().control(),
+                    0xFF0F => self.cpu.borrow().triggered_interrupts(),
                     _ => 0
                 }
             }
             0xFF80..=0xFFFE => self.hram[(addr - 0xFF80u16) as usize],
-            0xFFFF => self.cpu.borrow().interrupt_enable_flags(),
+            0xFFFF => self.cpu.borrow().enabled_interrupts(),
             _ => 0
         }
     }
@@ -169,6 +170,7 @@ impl Memory for Mmu {
                     0xFF05 => self.timer.borrow_mut().set_counter(data),
                     0xFF06 => self.timer.borrow_mut().set_modulo(data),
                     0xFF07 => self.timer.borrow_mut().set_control(data),
+                    0xFF0F => self.cpu.borrow_mut().set_triggered_interrupts(data),
                     0xFF46 => {
                         if data <= 0xF1 {
                             let src = u16::from_be_bytes([data, 0x00]);
@@ -184,7 +186,7 @@ impl Memory for Mmu {
                 self.hram[(addr - 0xFF80) as usize] = data;
             }
             0xFFFF => {
-                self.cpu.borrow_mut().set_interrupt_enable_flags(data)
+                self.cpu.borrow_mut().set_enabled_interrupts(data)
             }
             _ => { }
         }
