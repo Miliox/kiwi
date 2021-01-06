@@ -5,6 +5,7 @@ const DIVIDER_DIV: u64 = 256;
 
 pub struct Timer {
     enable: bool,
+    interrupt: bool,
 
     control: u8,
     counter: u8,
@@ -16,6 +17,7 @@ pub struct Timer {
     divider_acc: u64,
 }
 
+#[allow(dead_code)]
 impl Timer {
     pub fn control(&self) -> u8 {
         self.control
@@ -50,12 +52,17 @@ impl Timer {
     pub fn set_modulo(&mut self, modulo: u8) {
         self.modulo = modulo
     }
+
+    pub fn interrupt(&self) -> bool {
+        self.interrupt
+    }
 }
 
 impl Default for Timer {
     fn default() -> Self {
         Self {
             enable: true,
+            interrupt: false,
 
             control: 0xff,
             counter: 0,
@@ -71,6 +78,8 @@ impl Default for Timer {
 
 impl TickConsumer for Timer {
     fn sync(&mut self, ticks: u64) {
+        self.interrupt = false;
+
         if self.enable {
             self.counter_acc += ticks;
             self.divider_acc += ticks;
@@ -80,11 +89,8 @@ impl TickConsumer for Timer {
 
                 let (counter, overflow) = self.counter.overflowing_add(1);
 
-                if overflow {
-                    self.counter = self.modulo
-                } else {
-                    self.counter = counter
-                }
+                self.counter = if overflow { self.modulo } else { counter };
+                self.interrupt = overflow;
             }
 
             if self.divider_acc >= DIVIDER_DIV {
