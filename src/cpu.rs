@@ -24,7 +24,9 @@ pub struct Cpu {
     regs: Regs,    // Registers
     next_pc: u16,  // next program counter position
 
-    interrupt_enable: bool,     // interrupt enable flag
+    interrupt_enable: bool,      // interrupt enable flag
+    next_interrupt_enable: bool, // helper flag to emulate EI/DI after next instruction
+
     enabled_interrupts: Interrupts,
     triggered_interrupts: Interrupts,
 
@@ -83,8 +85,42 @@ impl Cpu {
         self.mmu.as_ref().unwrap().borrow_mut().write_byte(addr, data);
     }
 
+    pub fn interrupt_check_routine(&mut self) -> bool {
+        let interrupt_enable = self.interrupt_enable;
+        self.interrupt_enable = self.next_interrupt_enable;
+
+        if !interrupt_enable {
+            return false;
+        }
+
+        let i = (self.enabled_interrupts & self.triggered_interrupts) - Interrupts::UNUSED;
+
+        if i.vertical_blank() {
+            self.begin_call(0x40);
+        } else if i.lcdc_status() {
+            self.begin_call(0x48);
+        } else if i.timer_overflow() {
+            self.begin_call(0x50);
+        } else if i.serial_transfer_complete() {
+            self.begin_call(0x58);
+        } else if i.high_to_low_pin10_to_pin_13() {
+            self.begin_call(0x60);
+        } else {
+            return false;
+        }
+
+        self.interrupt_enable = false;
+        return true;
+    }
+
     pub fn cycle(&mut self) -> u64 {
         let pc = self.regs.pc();
+        self.next_pc = pc;
+
+        if self.interrupt_check_routine() {
+            return 4
+        }
+
         let opcode = self.read_byte(pc);
         let immediate8: u8 = self.read_byte(pc + 1);
         let immediate16: u16 = u16::from_le_bytes([immediate8, self.read_byte(pc + 2)]);
@@ -94,6 +130,7 @@ impl Cpu {
         self.next_pc = pc + instruction_size(opcode);
         self.execute(opcode, immediate8, immediate16);
         self.regs.set_pc(self.next_pc);
+
         instruction_ticks(opcode)
     }
 
@@ -1110,7 +1147,7 @@ impl Cpu {
             }
             0xF3 => {
                 // DI
-                self.interrupt_enable = false;
+                self.next_interrupt_enable = false;
             }
             0xF4 => {
                 // [F4] - INVALID
@@ -1143,7 +1180,7 @@ impl Cpu {
             }
             0xFB => {
                 // EI
-                self.interrupt_enable = true;
+                self.next_interrupt_enable = true;
             }
             0xFC => {
                 // [FC] - INVALID;
@@ -1324,4 +1361,12 @@ fn unsigned_signed_test() {
     let address: u16 = 0xff01;
 
     assert_eq!(0xff00u16, address.wrapping_add(offset as u16));
+}
+
+#[test]
+fn interrupt_check_test() {
+    let ie_flag = Interrupts::UNUSED | Interrupts::VBLANK | Interrupts::LCDC | Interrupts::TIMER;
+    let if_flag = Interrupts::UNUSED | Interrupts::TIMER;
+    assert_eq!(Interrupts::TIMER, (ie_flag & if_flag) - Interrupts::UNUSED);
+
 }
