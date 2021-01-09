@@ -7,7 +7,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 #[allow(dead_code)]
-pub struct MainBoard {
+pub struct Emulator {
     cpu: Rc<RefCell<Cpu>>,
     mmu: Rc<RefCell<Mmu>>,
     cart: Rc<RefCell<Cartridge>>,
@@ -16,7 +16,7 @@ pub struct MainBoard {
 }
 
 #[allow(dead_code)]
-impl MainBoard {
+impl Emulator {
     pub fn new() -> Self {
         let cpu = Rc::new(RefCell::new(Cpu::default()));
 
@@ -32,7 +32,7 @@ impl MainBoard {
 
         cpu.borrow_mut().mmu = Some(mmu.clone());
 
-        Self {
+        Emulator {
             cpu: cpu,
             mmu: mmu,
             cart: cart,
@@ -45,11 +45,13 @@ impl MainBoard {
         self.cart.borrow_mut().open(gb_rom_filename);
     }
 
+    pub fn frame(&mut self) {
+
+    }
+
     pub fn step(&mut self) {
         let ticks = self.cpu.borrow_mut().cycle();
-
         self.timer.borrow_mut().sync(ticks);
-
         self.clock += ticks;
     }
 
@@ -74,6 +76,6 @@ impl MainBoard {
     }
 }
 
-impl Default for MainBoard {
+impl Default for Emulator {
     fn default() -> Self { Self::new() }
 }
