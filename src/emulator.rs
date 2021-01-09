@@ -1,6 +1,7 @@
 use crate::cart::Cartridge;
 use crate::cpu::Cpu;
 use crate::mmu::Mmu;
+use crate::joypad::JoypadKeys;
 use crate::timer::Timer;
 use crate::ticks::TickConsumer;
 use std::cell::RefCell;
@@ -74,6 +75,14 @@ impl Emulator {
             println!("RESET {:02x?}: {:02x?}", rst, cart.rom_slice(rst, 8u16));
         }
     }
+
+    pub fn press_joypad_key(&mut self, keys: JoypadKeys) {
+        self.mmu.borrow_mut().press_joypad_key(keys);
+    } 
+
+    pub fn release_joypad_key(&mut self, keys: JoypadKeys) {
+        self.mmu.borrow_mut().release_joypad_key(keys);
+    } 
 }
 
 impl Default for Emulator {

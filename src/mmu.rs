@@ -1,5 +1,7 @@
 use crate::bios::DMG_BIOS;
 use crate::cpu::Cpu;
+use crate::joypad::JoypadKeys;
+use crate::joypad::JoypadRegs;
 use crate::timer::Timer;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -92,6 +94,8 @@ pub struct Mmu {
     /// - $FF00-$FF7F, $FFFF
     cpu: Rc<RefCell<Cpu>>,
     timer: Rc<RefCell<Timer>>,
+    joypad_regs: JoypadRegs,
+    joypad_keys: JoypadKeys,
 
     /// High RAM (Zero Page)
     /// - $FF80-$FFFE
@@ -113,8 +117,20 @@ impl Mmu {
             oram: Box::new([0; 160]),
             cpu: cpu,
             timer: timer,
+            joypad_regs: JoypadRegs::default(),
+            joypad_keys: JoypadKeys::default(),
             hram: Box::new([0; 127]),
         }
+    }
+
+    pub fn press_joypad_key(&mut self, keys: JoypadKeys) {
+        self.joypad_keys.insert(keys);
+        self.joypad_regs.merge_keys(self.joypad_keys);
+    }
+
+    pub fn release_joypad_key(&mut self, keys: JoypadKeys) {
+        self.joypad_keys.remove(keys);
+        self.joypad_regs.merge_keys(self.joypad_keys);
     }
 }
 
@@ -133,6 +149,7 @@ impl Memory for Mmu {
             0xFE00..=0xFE9F => self.oram[(addr - 0xFE00u16) as usize],
             0xFF00..=0xFF7F => {
                 match addr {
+                    0xFF00 => self.joypad_regs.bits(),
                     0xFF04 => self.timer.borrow().divider(),
                     0xFF05 => self.timer.borrow().counter(),
                     0xFF06 => self.timer.borrow().modulo(),
@@ -166,6 +183,10 @@ impl Memory for Mmu {
             }
             0xFF00..=0xFF7F => {
                 match addr {
+                    0xFF00 => {
+                        self.joypad_regs = JoypadRegs::from_bits(data & 0xf0).unwrap();
+                        self.joypad_regs.merge_keys(self.joypad_keys);
+                    }
                     0xFF04 => self.timer.borrow_mut().reset_divider(),
                     0xFF05 => self.timer.borrow_mut().set_counter(data),
                     0xFF06 => self.timer.borrow_mut().set_modulo(data),
