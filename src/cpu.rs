@@ -4,15 +4,13 @@ pub mod flags;
 pub mod interrupts;
 pub mod regs;
 
-use std::rc::Rc;
-use std::cell::RefCell;
-
 use crate::cpu::asm::disassemble;
 use crate::cpu::asm::instruction_size;
 use crate::cpu::asm::instruction_ticks;
 use crate::cpu::alu::Alu;
 use crate::cpu::regs::Regs;
 use crate::cpu::interrupts::Interrupts;
+use crate::types::MutRc;
 
 use crate::mmu::Mmu;
 use crate::mmu::Memory;
@@ -30,7 +28,7 @@ pub struct Cpu {
     enabled_interrupts: Interrupts,
     triggered_interrupts: Interrupts,
 
-    pub mmu: Option<Rc<RefCell<Mmu>>>, // Reference to Memory Management Unit
+    pub mmu: Option<MutRc<Mmu>>, // Reference to Memory Management Unit
 }
 
 #[allow(dead_code)]

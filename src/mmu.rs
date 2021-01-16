@@ -3,8 +3,7 @@ use crate::cpu::Cpu;
 use crate::joypad::JoypadKeys;
 use crate::joypad::JoypadRegs;
 use crate::timer::Timer;
-use std::cell::RefCell;
-use std::rc::Rc;
+use crate::types::MutRc;
 
 pub trait Memory {
     // Read a single byte from memory
@@ -71,7 +70,7 @@ pub struct Mmu {
 
     /// Cartridge ROM
     /// - $0000..=$7FFF
-    crom: Rc<RefCell<FlatMemory>>,
+    crom: MutRc<FlatMemory>,
 
     /// Video RAM
     /// - $8000..=$9FFF
@@ -79,7 +78,7 @@ pub struct Mmu {
 
     /// Cartridge RAM
     /// - $A000..=$BFFF
-    cram: Rc<RefCell<FlatMemory>>,
+    cram: MutRc<FlatMemory>,
 
     /// Internal RAM
     /// - $C000..=$DFFF
@@ -92,8 +91,8 @@ pub struct Mmu {
 
     /// Hardware IO
     /// - $FF00-$FF7F, $FFFF
-    cpu: Rc<RefCell<Cpu>>,
-    timer: Rc<RefCell<Timer>>,
+    cpu: MutRc<Cpu>,
+    timer: MutRc<Timer>,
     joypad_regs: JoypadRegs,
     joypad_keys: JoypadKeys,
 
@@ -104,10 +103,10 @@ pub struct Mmu {
 
 impl Mmu {
     pub fn new(
-            crom: Rc<RefCell<FlatMemory>>,
-            cram: Rc<RefCell<FlatMemory>>,
-            cpu:  Rc<RefCell<Cpu>>,
-            timer: Rc<RefCell<Timer>>) -> Self {
+            crom: MutRc<FlatMemory>,
+            cram: MutRc<FlatMemory>,
+            cpu:  MutRc<Cpu>,
+            timer: MutRc<Timer>) -> Self {
         Self {
             bios_enable: true,
             crom: crom,

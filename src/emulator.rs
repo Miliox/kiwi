@@ -4,32 +4,32 @@ use crate::mmu::Mmu;
 use crate::joypad::JoypadKeys;
 use crate::timer::Timer;
 use crate::ticks::TickConsumer;
-use std::cell::RefCell;
-use std::rc::Rc;
+use crate::types::MutRc;
+use crate::create_mut_rc;
 
 #[allow(dead_code)]
 pub struct Emulator {
-    cpu: Rc<RefCell<Cpu>>,
-    mmu: Rc<RefCell<Mmu>>,
-    cart: Rc<RefCell<Cartridge>>,
-    timer: Rc<RefCell<Timer>>,
+    cpu: MutRc<Cpu>,
+    mmu: MutRc<Mmu>,
+    cart: MutRc<Cartridge>,
+    timer: MutRc<Timer>,
     clock: u64,
 }
 
 #[allow(dead_code)]
 impl Emulator {
     pub fn new() -> Self {
-        let cpu = Rc::new(RefCell::new(Cpu::default()));
+        let cpu = create_mut_rc!(Cpu::default());
 
-        let cart = Rc::new(RefCell::new(Cartridge::default()));
+        let cart = create_mut_rc!(Cartridge::default());
 
-        let timer = Rc::new(RefCell::new(Timer::default()));
+        let timer = create_mut_rc!(Timer::default());
 
-        let mmu  = Rc::new(RefCell::new(
+        let mmu  = create_mut_rc!(
             Mmu::new(cart.borrow().rom.clone(),
                      cart.borrow().ram.clone(),
                      cpu.clone(),
-                     timer.clone())));
+                     timer.clone()));
 
         cpu.borrow_mut().mmu = Some(mmu.clone());
 

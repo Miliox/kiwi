@@ -2,6 +2,7 @@
 extern crate bitflags;
 extern crate sdl2;
 
+mod types;
 mod ticks;
 
 mod cpu;

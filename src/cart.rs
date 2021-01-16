@@ -1,19 +1,19 @@
 use crate::mmu::FlatMemory;
-use std::cell::RefCell;
-use std::rc::Rc;
+use crate::types::MutRc;
+use crate::create_mut_rc;
 
 #[allow(dead_code)]
 pub struct Cartridge {
-    pub rom: Rc<RefCell<FlatMemory>>,
-    pub ram: Rc<RefCell<FlatMemory>>,
+    pub rom: MutRc<FlatMemory>,
+    pub ram: MutRc<FlatMemory>,
 }
 
 #[allow(dead_code)]
 impl Cartridge {
     pub fn new() -> Self {
         Self {
-            rom: Rc::new(RefCell::new(FlatMemory { readable: true, writable: false, memory: Vec::new() })),
-            ram: Rc::new(RefCell::new(FlatMemory { readable: true, writable: true,  memory: Vec::new() })),
+            rom: create_mut_rc!(FlatMemory { readable: true, writable: false, memory: Vec::new() }),
+            ram: create_mut_rc!(FlatMemory { readable: true, writable: true,  memory: Vec::new() }),
         }
     }
 
