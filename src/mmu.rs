@@ -128,68 +128,60 @@ impl Memory for Mmu {
             0xC000..=0xDFFF => self.iram[(addr - 0xC000u16) as usize],
             0xE000..=0xFDFF => self.iram[(addr - 0xE000u16) as usize],
             0xFE00..=0xFE9F => self.oram[(addr - 0xFE00u16) as usize],
-            0xFF00..=0xFF7F => {
-                match addr {
-                    0xFF00 => self.joypad_regs.bits(),
-                    0xFF04 => self.timer.borrow().divider(),
-                    0xFF05 => self.timer.borrow().counter(),
-                    0xFF06 => self.timer.borrow().modulo(),
-                    0xFF07 => self.timer.borrow().control(),
-                    0xFF0F => self.cpu.borrow().triggered_interrupts(),
-                    _ => 0
-                }
-            }
             0xFF80..=0xFFFE => self.hram[(addr - 0xFF80u16) as usize],
+
+            // CPU
+            0xFF0F => self.cpu.borrow().triggered_interrupts(),
             0xFFFF => self.cpu.borrow().enabled_interrupts(),
+
+            // Joypad
+            0xFF00 => self.joypad_regs.bits(),
+
+            // Timer
+            0xFF04 => self.timer.borrow().divider(),
+            0xFF05 => self.timer.borrow().counter(),
+            0xFF06 => self.timer.borrow().modulo(),
+            0xFF07 => self.timer.borrow().control(),
+
             _ => 0
         }
     }
 
     fn write_byte(&mut self, addr: u16, data: u8) {
         match addr {
-            0x8000..=0x9FFF =>  {
-                self.vram[(addr - 0x8000) as usize] = data;
+            0x8000..=0x9FFF => self.vram[(addr - 0x8000) as usize] = data,
+            0xA000..=0xBFFF => self.write_byte(addr - 0xA000, data),
+            0xC000..=0xDFFF => self.iram[(addr - 0xC000) as usize] = data,
+            0xE000..=0xFDFF => self.iram[(addr - 0xE000) as usize] = data,
+            0xFE00..=0xFE9F => self.oram[(addr - 0xFE00) as usize] = data,
+            0xFF80..=0xFFFE => self.hram[(addr - 0xFF80) as usize] = data,
+
+            // CPU
+            0xFF0F => self.cpu.borrow_mut().set_triggered_interrupts(data),
+            0xFFFF => self.cpu.borrow_mut().set_enabled_interrupts(data),
+
+            // JOYPAD
+            0xFF00 => {
+                self.joypad_regs = JoypadRegs::from_bits(data & 0xf0).unwrap();
+                self.joypad_regs.merge_keys(self.joypad_keys);
             }
-            0xA000..=0xBFFF => {
-                self.write_byte(addr - 0xA000, data);
-            }
-            0xC000..=0xDFFF => {
-                self.iram[(addr - 0xC000) as usize] = data;
-            }
-            0xE000..=0xFDFF => {
-                self.iram[(addr - 0xE000) as usize] = data;
-            }
-            0xFE00..=0xFE9F => {
-                self.oram[(addr - 0xFE00) as usize] = data;
-            }
-            0xFF00..=0xFF7F => {
-                match addr {
-                    0xFF00 => {
-                        self.joypad_regs = JoypadRegs::from_bits(data & 0xf0).unwrap();
-                        self.joypad_regs.merge_keys(self.joypad_keys);
+
+            // TIMER
+            0xFF04 => self.timer.borrow_mut().reset_divider(),
+            0xFF05 => self.timer.borrow_mut().set_counter(data),
+            0xFF06 => self.timer.borrow_mut().set_modulo(data),
+            0xFF07 => self.timer.borrow_mut().set_control(data),
+
+            // DMA
+            0xFF46 => {
+                if data <= 0xF1 {
+                    let src = u16::from_be_bytes([data, 0x00]);
+                    for i in 0..160 {
+                        self.oram[i] = self.read_byte(src + i as u16)
                     }
-                    0xFF04 => self.timer.borrow_mut().reset_divider(),
-                    0xFF05 => self.timer.borrow_mut().set_counter(data),
-                    0xFF06 => self.timer.borrow_mut().set_modulo(data),
-                    0xFF07 => self.timer.borrow_mut().set_control(data),
-                    0xFF0F => self.cpu.borrow_mut().set_triggered_interrupts(data),
-                    0xFF46 => {
-                        if data <= 0xF1 {
-                            let src = u16::from_be_bytes([data, 0x00]);
-                            for i in 0..160 {
-                                self.oram[i] = self.read_byte(src + i as u16)
-                            }
-                        }
-                    }
-                    _ => { }
                 }
             }
-            0xFF80..=0xFFFE => {
-                self.hram[(addr - 0xFF80) as usize] = data;
-            }
-            0xFFFF => {
-                self.cpu.borrow_mut().set_enabled_interrupts(data)
-            }
+
             _ => { }
         }
     }
