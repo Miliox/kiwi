@@ -1,6 +1,7 @@
 mod bios;
 mod cartridge;
 mod cpu;
+mod gpu;
 mod joypad;
 mod mmu;
 mod serial;
@@ -12,6 +13,7 @@ use crate::types::*;
 use bios::*;
 use cartridge::*;
 use cpu::*;
+use gpu::*;
 use joypad::*;
 use mmu::*;
 use serial::*;
@@ -33,6 +35,7 @@ pub struct Emulator {
     cartridge: MutRc<Cartridge>,
     clock: u64,
     cpu: MutRc<Cpu>,
+    gpu: MutRc<Gpu>,
     joypad: MutRc<Joypad>,
     serial: MutRc<Serial>,
     timer: MutRc<Timer>,
@@ -42,6 +45,8 @@ pub struct Emulator {
 impl Emulator {
     pub fn new() -> Self {
         let cpu = create_mut_rc!(Cpu::default());
+
+        let gpu = create_mut_rc!(Gpu::default());
 
         let cartridge = create_mut_rc!(Cartridge::default());
 
@@ -54,6 +59,7 @@ impl Emulator {
         let mmu = create_mut_rc!(Mmu::new(
             cartridge.clone(),
             cpu.clone(),
+            gpu.clone(),
             joypad.clone(),
             serial.clone(),
             timer.clone(),
@@ -65,6 +71,7 @@ impl Emulator {
             clock: 0,
             cartridge: cartridge,
             cpu: cpu,
+            gpu: gpu,
             joypad: joypad,
             serial: serial,
             timer: timer,
@@ -99,6 +106,8 @@ impl Emulator {
         if self.timer.borrow().interrupt() {
             self.cpu.borrow_mut().set_timer_overflow_interrupt_triggered();
         }
+
+        self.gpu.borrow_mut().step(ticks);
 
         self.clock += ticks;
     }

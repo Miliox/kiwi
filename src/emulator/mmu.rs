@@ -35,6 +35,8 @@ pub struct Mmu {
 
     pub cpu: MutRc<Cpu>,
 
+    pub gpu: MutRc<Gpu>,
+
     pub joypad: MutRc<Joypad>,
 
     pub serial: MutRc<Serial>,
@@ -43,7 +45,7 @@ pub struct Mmu {
 }
 
 impl Mmu {
-    pub fn new(cartridge: MutRc<Cartridge>, cpu: MutRc<Cpu>, joypad: MutRc<Joypad>, serial: MutRc<Serial>, timer: MutRc<Timer>) -> Self {
+    pub fn new(cartridge: MutRc<Cartridge>, cpu: MutRc<Cpu>, gpu: MutRc<Gpu>, joypad: MutRc<Joypad>, serial: MutRc<Serial>, timer: MutRc<Timer>) -> Self {
         Self {
             bios_enable: true,
 
@@ -54,6 +56,7 @@ impl Mmu {
 
             cartridge: cartridge,
             cpu: cpu,
+            gpu: gpu,
             joypad: joypad,
             serial: serial,
             timer: timer,
@@ -95,6 +98,19 @@ impl Memory for Mmu {
             0xFF06 => self.timer.borrow().modulo(),
             0xFF07 => self.timer.borrow().control(),
 
+            // GPU
+            0xFF40 => self.gpu.borrow().lcdc(),
+            0xFF41 => self.gpu.borrow().stat(),
+            0xFF42 => self.gpu.borrow().scroll_y(),
+            0xFF43 => self.gpu.borrow().scroll_x(),
+            0xFF44 => self.gpu.borrow().scanline(),
+            0xFF45 => self.gpu.borrow().scanline_compare(),
+            0xFF47 => self.gpu.borrow().background_palette(),
+            0xFF48 => self.gpu.borrow().object_palette_0(),
+            0xFF49 => self.gpu.borrow().object_palette_1(),
+            0xFF4A => self.gpu.borrow().window_y(),
+            0xFF4B => self.gpu.borrow().window_x(),
+
             _ => 0
         }
     }
@@ -126,6 +142,18 @@ impl Memory for Mmu {
             0xFF05 => self.timer.borrow_mut().set_counter(data),
             0xFF06 => self.timer.borrow_mut().set_modulo(data),
             0xFF07 => self.timer.borrow_mut().set_control(data),
+
+            // GPU
+            0xFF40 => self.gpu.borrow_mut().set_lcdc(data),
+            0xFF41 => self.gpu.borrow_mut().set_stat(data),
+            0xFF42 => self.gpu.borrow_mut().set_scroll_y(data),
+            0xFF43 => self.gpu.borrow_mut().set_scroll_x(data),
+            0xFF45 => self.gpu.borrow_mut().set_scanline_compare(data),
+            0xFF47 => self.gpu.borrow_mut().set_background_palette(data),
+            0xFF48 => self.gpu.borrow_mut().set_object_palette_0(data),
+            0xFF49 => self.gpu.borrow_mut().set_object_palette_1(data),
+            0xFF4A => self.gpu.borrow_mut().set_window_y(data),
+            0xFF4B => self.gpu.borrow_mut().set_window_x(data),
 
             // DMA
             0xFF46 => {
