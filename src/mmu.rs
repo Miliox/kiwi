@@ -3,6 +3,7 @@ use crate::bios::DMG_BIOS;
 use crate::cartridge::Cartridge;
 use crate::cpu::Cpu;
 use crate::joypad::Joypad;
+use crate::serial::Serial;
 use crate::timer::Timer;
 
 pub struct Mmu {
@@ -33,11 +34,13 @@ pub struct Mmu {
 
     pub joypad: MutRc<Joypad>,
 
+    pub serial: MutRc<Serial>,
+
     pub timer: MutRc<Timer>,
 }
 
 impl Mmu {
-    pub fn new(cartridge: MutRc<Cartridge>, cpu: MutRc<Cpu>, joypad: MutRc<Joypad>, timer: MutRc<Timer>) -> Self {
+    pub fn new(cartridge: MutRc<Cartridge>, cpu: MutRc<Cpu>, joypad: MutRc<Joypad>, serial: MutRc<Serial>, timer: MutRc<Timer>) -> Self {
         Self {
             bios_enable: true,
 
@@ -49,6 +52,7 @@ impl Mmu {
             cartridge: cartridge,
             cpu: cpu,
             joypad: joypad,
+            serial: serial,
             timer: timer,
         }
     }
@@ -78,6 +82,10 @@ impl Memory for Mmu {
             // Joypad
             0xFF00 => self.joypad.borrow().get_p1(),
 
+            // Serial
+            0xFF01 => self.serial.borrow().data(),
+            0xFF02 => self.serial.borrow().control(),
+
             // Timer
             0xFF04 => self.timer.borrow().divider(),
             0xFF05 => self.timer.borrow().counter(),
@@ -105,6 +113,10 @@ impl Memory for Mmu {
 
             // JOYPAD
             0xFF00 => { self.joypad.borrow_mut().set_p1(data) }
+
+            // SERIAL
+            0xFF01 => { self.serial.borrow_mut().set_data(data) }
+            0xFF02 => { self.serial.borrow_mut().set_control(data) }
 
             // TIMER
             0xFF04 => self.timer.borrow_mut().reset_divider(),

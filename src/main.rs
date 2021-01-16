@@ -11,6 +11,7 @@ mod gpu;
 mod joypad;
 mod mmu;
 mod timer;
+mod serial;
 mod emulator;
 
 use emulator::Emulator;

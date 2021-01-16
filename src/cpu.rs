@@ -77,6 +77,10 @@ impl Cpu {
         self.triggered_interrupts.set_timer_overflow();
     }
 
+    pub fn set_serial_transfer_complete_interrupt_triggered(&mut self) {
+        self.triggered_interrupts.set_serial_transfer_complete();
+    }
+
     pub fn read_byte(&self, addr: u16) -> u8 {
         self.mmu.as_ref().unwrap().borrow().read(addr)
     }

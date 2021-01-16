@@ -5,6 +5,7 @@ use crate::cartridge::Cartridge;
 use crate::cpu::Cpu;
 use crate::mmu::Mmu;
 use crate::joypad::Joypad;
+use crate::serial::Serial;
 use crate::timer::Timer;
 
 use sdl2::event::Event;
@@ -24,8 +25,9 @@ pub struct Emulator {
     clock: u64,
     cpu: MutRc<Cpu>,
     joypad: MutRc<Joypad>,
-    mmu: MutRc<Mmu>,
+    serial: MutRc<Serial>,
     timer: MutRc<Timer>,
+    mmu: MutRc<Mmu>,
 }
 
 impl Emulator {
@@ -36,12 +38,15 @@ impl Emulator {
 
         let joypad = create_mut_rc!(Joypad::default());
 
+        let serial = create_mut_rc!(Serial::default());
+
         let timer = create_mut_rc!(Timer::default());
 
         let mmu = create_mut_rc!(Mmu::new(
             cartridge.clone(),
             cpu.clone(),
             joypad.clone(),
+            serial.clone(),
             timer.clone(),
         ));
 
@@ -52,8 +57,9 @@ impl Emulator {
             cartridge: cartridge,
             cpu: cpu,
             joypad: joypad,
-            mmu: mmu,
+            serial: serial,
             timer: timer,
+            mmu: mmu,
         }
     }
 
@@ -73,6 +79,13 @@ impl Emulator {
 
     pub fn step(&mut self) {
         let ticks = self.cpu.borrow_mut().step();
+
+        self.serial.borrow_mut().step(ticks);
+        if self.serial.borrow().transfer_complete() {
+            self.cpu.borrow_mut().set_serial_transfer_complete_interrupt_triggered();
+        }
+
+
         self.timer.borrow_mut().step(ticks);
 
         if self.timer.borrow().interrupt() {
