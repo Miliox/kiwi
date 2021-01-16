@@ -1,10 +1,13 @@
 use crate::types::*;
-use crate::bios::DMG_BIOS;
-use crate::cartridge::Cartridge;
-use crate::cpu::Cpu;
-use crate::joypad::Joypad;
-use crate::serial::Serial;
-use crate::timer::Timer;
+use crate::emulator::*;
+
+pub trait Memory {
+    // Read a single byte from memory
+    fn read(&self, addr: u16) -> u8;
+
+    // Write a single byte to memory
+    fn write(&mut self, addr: u16, data: u8);
+}
 
 pub struct Mmu {
     /// BIOS Enabled

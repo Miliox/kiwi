@@ -1,12 +1,21 @@
+mod bios;
+mod cartridge;
+mod cpu;
+mod joypad;
+mod mmu;
+mod serial;
+mod timer;
+
 use crate::create_mut_rc;
 use crate::types::*;
 
-use crate::cartridge::Cartridge;
-use crate::cpu::Cpu;
-use crate::mmu::Mmu;
-use crate::joypad::Joypad;
-use crate::serial::Serial;
-use crate::timer::Timer;
+use bios::*;
+use cartridge::*;
+use cpu::*;
+use joypad::*;
+use mmu::*;
+use serial::*;
+use timer::*;
 
 use sdl2::event::Event;
 use sdl2::keyboard::*;
@@ -87,7 +96,6 @@ impl Emulator {
 
 
         self.timer.borrow_mut().step(ticks);
-
         if self.timer.borrow().interrupt() {
             self.cpu.borrow_mut().set_timer_overflow_interrupt_triggered();
         }

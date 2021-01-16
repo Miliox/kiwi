@@ -1,17 +1,9 @@
 #[macro_use]
 extern crate bitflags;
+
 extern crate sdl2;
 
 mod types;
-mod cpu;
-
-mod bios;
-mod cartridge;
-mod gpu;
-mod joypad;
-mod mmu;
-mod timer;
-mod serial;
 mod emulator;
 
 use emulator::Emulator;

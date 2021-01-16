@@ -6,14 +6,6 @@ pub const TICKS_PER_FRAME: u64 = TICKS_PER_SECOND / 60;
 
 pub type MutRc<T> = Rc<RefCell<T>>;
 
-pub trait Memory {
-    // Read a single byte from memory
-    fn read(&self, addr: u16) -> u8;
-
-    // Write a single byte to memory
-    fn write(&mut self, addr: u16, data: u8);
-}
-
 pub trait TickProducer {
     fn step(&mut self) -> u64;
 }

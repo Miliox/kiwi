@@ -5,13 +5,13 @@ pub mod interrupts;
 pub mod regs;
 
 use crate::types::*;
-use crate::cpu::asm::*;
-use crate::cpu::alu::Alu;
-use crate::cpu::regs::Regs;
-use crate::cpu::interrupts::Interrupts;
+use crate::emulator::mmu::Mmu;
+use crate::emulator::mmu::Memory;
 
-
-use crate::mmu::Mmu;
+use alu::Alu;
+use asm::*;
+use regs::Regs;
+use interrupts::Interrupts;
 
 #[allow(dead_code)]
 #[derive(Default)]
