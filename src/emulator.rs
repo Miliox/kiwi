@@ -97,17 +97,27 @@ impl Emulator {
         let ticks = self.cpu.borrow_mut().step();
 
         self.serial.borrow_mut().step(ticks);
-        if self.serial.borrow().transfer_complete() {
-            self.cpu.borrow_mut().set_serial_transfer_complete_interrupt_triggered();
+        if self.serial.borrow().transfering_completion_interruption_requested() {
+            self.cpu.borrow_mut().set_serial_transfering_completion_interruption_requested();
         }
 
-
         self.timer.borrow_mut().step(ticks);
-        if self.timer.borrow().interrupt() {
+        if self.timer.borrow().overflow_interrupt_requested() {
             self.cpu.borrow_mut().set_timer_overflow_interrupt_triggered();
         }
 
         self.gpu.borrow_mut().step(ticks);
+        if self.gpu.borrow().lcdc_status_interrupt_requested() {
+            self.cpu.borrow_mut().set_lcdc_status_interruption_requested();
+        }
+        if self.gpu.borrow().vertical_blank_interrupt_requested() {
+            self.cpu.borrow_mut().set_vertical_blank_interruption_requested();
+        }
+
+        if self.joypad.borrow().interruption_requested() {
+            self.joypad.borrow_mut().reset_interruption_requested();
+            self.cpu.borrow_mut().set_joypad_key_interruption_requested();
+        }
 
         self.clock += ticks;
     }

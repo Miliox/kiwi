@@ -23,8 +23,8 @@ pub struct Cpu {
     interrupt_enable: bool,      // interrupt enable flag
     next_interrupt_enable: bool, // helper flag to emulate EI/DI after next instruction
 
-    enabled_interrupts: Interrupts,
-    triggered_interrupts: Interrupts,
+    interruptions_enabled: Interrupts,
+    interruptions_requested: Interrupts,
 
     pub mmu: Option<MutRc<Mmu>>, // Reference to Memory Management Unit
 }
@@ -57,28 +57,40 @@ impl Cpu {
 
     #[inline(always)]
     pub fn enabled_interrupts(&self) -> u8 {
-        self.enabled_interrupts.into()
+        self.interruptions_enabled.into()
     }
 
     #[inline(always)]
     pub fn set_enabled_interrupts(&mut self, data: u8) {
-        self.enabled_interrupts = data.into();
+        self.interruptions_enabled = data.into();
     }
 
-    pub fn triggered_interrupts(&self) -> u8 {
-        self.triggered_interrupts.into()
+    pub fn interruptions_requested(&self) -> u8 {
+        self.interruptions_requested.into()
     }
 
-    pub fn set_triggered_interrupts(&mut self, data: u8) {
-        self.triggered_interrupts = data.into();
+    pub fn set_interruptions_requested(&mut self, data: u8) {
+        self.interruptions_requested = data.into();
     }
 
     pub fn set_timer_overflow_interrupt_triggered(&mut self) {
-        self.triggered_interrupts.set_timer_overflow();
+        self.interruptions_requested.set_timer_overflow();
     }
 
-    pub fn set_serial_transfer_complete_interrupt_triggered(&mut self) {
-        self.triggered_interrupts.set_serial_transfer_complete();
+    pub fn set_serial_transfering_completion_interruption_requested(&mut self) {
+        self.interruptions_requested.set_serial_transfer_complete();
+    }
+
+    pub fn set_lcdc_status_interruption_requested(&mut self) {
+        self.interruptions_requested.set_lcdc_status();
+    }
+
+    pub fn set_vertical_blank_interruption_requested(&mut self) {
+        self.interruptions_requested.set_vertical_blank();
+    }
+
+    pub fn set_joypad_key_interruption_requested(&mut self) {
+        self.interruptions_requested.set_high_to_low_pin10_to_pin_13();
     }
 
     pub fn read_byte(&self, addr: u16) -> u8 {
@@ -97,7 +109,7 @@ impl Cpu {
             return false;
         }
 
-        let i = (self.enabled_interrupts & self.triggered_interrupts) - Interrupts::UNUSED;
+        let i = (self.interruptions_enabled & self.interruptions_requested) - Interrupts::UNUSED;
 
         if i.vertical_blank() {
             self.begin_call(0x40);

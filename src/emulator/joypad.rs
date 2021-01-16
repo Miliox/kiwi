@@ -34,6 +34,7 @@ bitflags! {
 pub struct Joypad {
     regs: JoypadRegs,
     keys: JoypadKeys,
+    interruption_requested: bool,
 }
 
 #[allow(dead_code)]
@@ -65,86 +66,105 @@ impl Joypad {
     pub fn press_up(&mut self) {
         self.keys.insert(JoypadKeys::UP);
         self.update();
-
+        self.interruption_requested = true;
     }
 
     pub fn release_up(&mut self) {
         self.keys.remove(JoypadKeys::UP);
         self.update();
+        self.interruption_requested = true;
     }
 
     pub fn press_down(&mut self) {
         self.keys.insert(JoypadKeys::DOWN);
         self.update();
-
+        self.interruption_requested = true;
     }
 
     pub fn release_down(&mut self) {
         self.keys.remove(JoypadKeys::DOWN);
         self.update();
+        self.interruption_requested = true;
     }
 
     pub fn press_left(&mut self) {
         self.keys.insert(JoypadKeys::LEFT);
         self.update();
-
+        self.interruption_requested = true;
     }
 
     pub fn release_left(&mut self) {
         self.keys.remove(JoypadKeys::LEFT);
         self.update();
+        self.interruption_requested = true;
     }
 
     pub fn press_right(&mut self) {
         self.keys.insert(JoypadKeys::RIGHT);
         self.update();
+        self.interruption_requested = true;
     }
 
     pub fn release_right(&mut self) {
         self.keys.remove(JoypadKeys::RIGHT);
         self.update();
+        self.interruption_requested = true;
     }
 
     pub fn press_a(&mut self) {
         self.keys.insert(JoypadKeys::A);
         self.update();
-
+        self.interruption_requested = true;
     }
 
     pub fn release_a(&mut self) {
         self.keys.remove(JoypadKeys::A);
         self.update();
+        self.interruption_requested = true;
     }
 
     pub fn press_b(&mut self) {
         self.keys.insert(JoypadKeys::B);
         self.update();
-
+        self.interruption_requested = true;
     }
 
     pub fn release_b(&mut self) {
         self.keys.remove(JoypadKeys::B);
         self.update();
+        self.interruption_requested = true;
     }
 
     pub fn press_select(&mut self) {
         self.keys.insert(JoypadKeys::SELECT);
         self.update();
+        self.interruption_requested = true;
     }
 
     pub fn release_select(&mut self) {
         self.keys.remove(JoypadKeys::SELECT);
         self.update();
+        self.interruption_requested = true;
     }
 
     pub fn press_start(&mut self) {
         self.keys.insert(JoypadKeys::START);
         self.update();
+        self.interruption_requested = true;
     }
 
     pub fn release_start(&mut self) {
         self.keys.remove(JoypadKeys::START);
         self.update();
+        self.interruption_requested = true;
+    }
+
+    pub fn interruption_requested(&self) -> bool {
+        self.interruption_requested
+    }
+
+    pub fn reset_interruption_requested(&mut self) {
+        self.interruption_requested = false;
     }
 }
 

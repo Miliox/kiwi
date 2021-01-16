@@ -82,7 +82,7 @@ impl Memory for Mmu {
             0xA000..=0xBFFF => self.cartridge.borrow().read_ram(addr - 0xA000u16),
 
             // CPU
-            0xFF0F => self.cpu.borrow().triggered_interrupts(),
+            0xFF0F => self.cpu.borrow().interruptions_requested(),
             0xFFFF => self.cpu.borrow().enabled_interrupts(),
 
             // Joypad
@@ -127,7 +127,7 @@ impl Memory for Mmu {
             0xA000..=0xBFFF => self.cartridge.borrow_mut().write_ram(addr - 0xA000, data),
 
             // CPU
-            0xFF0F => self.cpu.borrow_mut().set_triggered_interrupts(data),
+            0xFF0F => self.cpu.borrow_mut().set_interruptions_requested(data),
             0xFFFF => self.cpu.borrow_mut().set_enabled_interrupts(data),
 
             // JOYPAD

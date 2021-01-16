@@ -24,7 +24,7 @@ bitflags! {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum LcdControlMode {
     HorizontalBlank,
     VerticalBlank,

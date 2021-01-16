@@ -10,7 +10,7 @@ pub struct Serial {
     shift_bits: u64,
     shift_ticks: u64,
     transfering: bool,
-    transfer_complete: bool,
+    transfering_completion_interruption_requested: bool,
 }
 
 impl Serial {
@@ -34,8 +34,8 @@ impl Serial {
         self.data = data;
     }
 
-    pub fn transfer_complete(&self) -> bool {
-        self.transfer_complete
+    pub fn transfering_completion_interruption_requested(&self) -> bool {
+        self.transfering_completion_interruption_requested
     }
 }
 
@@ -48,14 +48,14 @@ impl Default for Serial {
             shift_bits: 0,
             shift_ticks: 0,
             transfering: false,
-            transfer_complete: false,
+            transfering_completion_interruption_requested: false,
         }
     }
 }
 
 impl TickConsumer for Serial {
     fn step(&mut self, ticks: u64) {
-        self.transfer_complete = false;
+        self.transfering_completion_interruption_requested = false;
 
         if !self.transfering {
             return
@@ -71,7 +71,7 @@ impl TickConsumer for Serial {
 
         if self.shift_bits <= 0 {
             self.transfering = false;
-            self.transfer_complete = true;
+            self.transfering_completion_interruption_requested = true;
         }
     }
 }

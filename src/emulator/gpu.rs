@@ -28,6 +28,8 @@ pub struct Gpu {
     object_palette_1: Palette,
 
     ticks: u64,
+    lcdc_status_interrupt_requested: bool,
+    vertical_blank_interrupt_requested: bool,
 }
 
 impl Gpu {
@@ -45,6 +47,29 @@ impl Gpu {
 
     pub fn set_stat(&mut self, stat: u8) {
         self.stat = (LcdControlStatus::from(stat) & !LcdControlStatus::READ_ONLY_MASK)  | (self.stat & LcdControlStatus::READ_ONLY_MASK);
+        self.stat.set_scanline_coincidence(self.scanline == self.scanline_compare);
+    }
+
+    pub fn mode(&self) -> LcdControlMode {
+        self.stat.mode()
+    }
+
+    pub fn set_mode(&mut self, mode: LcdControlMode) {
+        self.stat.set_mode(mode);
+
+        if mode == LcdControlMode::ScanningOAM && self.stat.contains(LcdControlStatus::MODE_OAM_INTERRUPT_ENABLE) {
+            self.lcdc_status_interrupt_requested = true;
+        }
+
+        if mode == LcdControlMode::VerticalBlank && self.stat.contains(LcdControlStatus::MODE_V_BLANK_INTERRUPT_ENABLE) {
+            self.lcdc_status_interrupt_requested = true;
+        }
+
+        if mode == LcdControlMode::HorizontalBlank && self.stat.contains(LcdControlStatus::MODE_H_BLANK_INTERRUPT_ENABLE) {
+            self.lcdc_status_interrupt_requested = true;
+        }
+
+        self.vertical_blank_interrupt_requested = mode == LcdControlMode::VerticalBlank;
     }
 
     pub fn scanline(&self) -> u8 {
@@ -54,11 +79,19 @@ impl Gpu {
     fn increment_scanline(&mut self) {
         self.scanline += 1;
         self.stat.set_scanline_coincidence(self.scanline == self.scanline_compare);
+
+        if self.stat.contains(LcdControlStatus::LINE_Y_COINCIDENCE_INTERRUPT_ENABLE) {
+            self.lcdc_status_interrupt_requested = true;
+        }
     }
 
     fn reset_scanline(&mut self) {
         self.scanline = 0;
         self.stat.set_scanline_coincidence(self.scanline == self.scanline_compare);
+
+        if self.stat.contains(LcdControlStatus::LINE_Y_COINCIDENCE_INTERRUPT_ENABLE) {
+            self.lcdc_status_interrupt_requested = true;
+        }
     }
 
     pub fn scanline_compare(&self) -> u8 {
@@ -124,22 +157,32 @@ impl Gpu {
     pub fn set_window_y(&mut self, window_y: u8) {
         self.window_y = window_y;
     }
+
+    pub fn lcdc_status_interrupt_requested(&self) -> bool {
+        self.lcdc_status_interrupt_requested
+    }
+
+    pub fn vertical_blank_interrupt_requested(&self) -> bool {
+        self.vertical_blank_interrupt_requested
+    }
 }
 
 impl TickConsumer for Gpu {
     fn step(&mut self, ticks: u64) {
         self.ticks += ticks;
+        self.lcdc_status_interrupt_requested = false;
+        self.vertical_blank_interrupt_requested = false;
 
-        match self.stat.mode() {
+        match self.mode() {
             LcdControlMode::HorizontalBlank => {
                 if self.ticks >= 204 {
                     self.ticks -= 204;
                     self.increment_scanline();
     
                     if self.scanline >= 143 {
-                        self.stat.set_mode(LcdControlMode::VerticalBlank);
+                        self.set_mode(LcdControlMode::VerticalBlank);
                     } else {
-                        self.stat.set_mode(LcdControlMode::ScanningOAM);
+                        self.set_mode(LcdControlMode::ScanningOAM);
                     }
     
                 }
@@ -150,7 +193,7 @@ impl TickConsumer for Gpu {
                     self.increment_scanline();
     
                     if self.scanline > 153 {
-                        self.stat.set_mode(LcdControlMode::ScanningOAM);
+                        self.set_mode(LcdControlMode::ScanningOAM);
                         self.reset_scanline();
                     }
                 }
@@ -158,13 +201,13 @@ impl TickConsumer for Gpu {
             LcdControlMode::ScanningOAM => {
                 if self.ticks >= 80 {
                     self.ticks -= 80;
-                    self.stat.set_mode(LcdControlMode::Transfering);
+                    self.set_mode(LcdControlMode::Transfering);
                 }
             }
             LcdControlMode::Transfering => {
                 if self.ticks >= 172 {
                     self.ticks -= 172;
-                    self.stat.set_mode(LcdControlMode::HorizontalBlank);
+                    self.set_mode(LcdControlMode::HorizontalBlank);
                     // TODO: Render line
                 }
             }

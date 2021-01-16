@@ -5,7 +5,7 @@ const DIVIDER_DIV: u64 = 256;
 
 pub struct Timer {
     enable: bool,
-    interrupt: bool,
+    overflow_interrupt_requested: bool,
 
     control: u8,
     counter: u8,
@@ -52,8 +52,8 @@ impl Timer {
         self.modulo = modulo
     }
 
-    pub fn interrupt(&self) -> bool {
-        self.interrupt
+    pub fn overflow_interrupt_requested(&self) -> bool {
+        self.overflow_interrupt_requested
     }
 }
 
@@ -61,7 +61,7 @@ impl Default for Timer {
     fn default() -> Self {
         Self {
             enable: true,
-            interrupt: false,
+            overflow_interrupt_requested: false,
 
             control: 0xff,
             counter: 0,
@@ -77,7 +77,7 @@ impl Default for Timer {
 
 impl TickConsumer for Timer {
     fn step(&mut self, ticks: u64) {
-        self.interrupt = false;
+        self.overflow_interrupt_requested = false;
 
         if self.enable {
             self.counter_acc += ticks;
@@ -89,7 +89,7 @@ impl TickConsumer for Timer {
                 let (counter, overflow) = self.counter.overflowing_add(1);
 
                 self.counter = if overflow { self.modulo } else { counter };
-                self.interrupt = overflow;
+                self.overflow_interrupt_requested = overflow;
             }
 
             if self.divider_acc >= DIVIDER_DIV {
