@@ -9,6 +9,9 @@ bitflags! {
         const P12_IN  = 0b0000_0100;
         const P11_IN  = 0b0000_0010;
         const P10_IN  = 0b0000_0001;
+
+        const PAD_OUT = 0b0011_0000;
+        const PAD_IN  = 0b0000_1111;
     }
 }
 
@@ -27,19 +30,121 @@ bitflags! {
     }
 }
 
+#[derive(Default)]
+pub struct Joypad {
+    regs: JoypadRegs,
+    keys: JoypadKeys,
+}
+
 #[allow(dead_code)]
-impl JoypadRegs {
-    pub fn merge_keys(&mut self, keys: JoypadKeys) {
-        self.remove(Self::P13_IN | Self::P12_IN | Self::P11_IN | Self::P10_IN);
-        if self.contains(Self::P15_OUT | Self::P14_OUT) {
-            self.insert(Self::P13_IN | Self::P12_IN | Self::P11_IN | Self::P10_IN);
-        } else if self.contains(Self::P15_OUT) {
-            self.insert(Self::from_bits(!keys.bits().wrapping_shr(4) & 0x0f).unwrap());
-        } else if self.contains(Self::P14_OUT) {
-            self.insert(Self::from_bits(!keys.bits() & 0x0f).unwrap());
+impl Joypad {
+    pub fn get_p1(&self) -> u8 {
+        self.regs.bits()
+    }
+
+    pub fn set_p1(&mut self, data: u8) {
+        self.regs = JoypadRegs::from_bits(data).unwrap();
+        self.update();
+    }
+
+    pub fn update(&mut self) {
+        let pad_selector = self.regs & JoypadRegs::PAD_OUT;
+        self.regs.remove(JoypadRegs::PAD_IN);
+
+        if pad_selector.contains(JoypadRegs::P15_OUT |JoypadRegs::P14_OUT) {
+            self.regs.insert(JoypadRegs::PAD_IN);
+        } else if pad_selector.contains(JoypadRegs::P15_OUT) {
+            self.regs.insert(JoypadRegs::from_bits(!self.keys.bits().wrapping_shr(4) & 0x0f).unwrap());
+        } else if pad_selector.contains(JoypadRegs::P14_OUT) {
+            self.regs.insert(JoypadRegs::from_bits(!self.keys.bits() & 0x0f).unwrap());
         }  else {
-            self.insert(Self::P13_IN | Self::P12_IN | Self::P11_IN | Self::P10_IN);
+            self.regs.insert(JoypadRegs::PAD_IN);
         }
+    }
+
+    pub fn press_up(&mut self) {
+        self.keys.insert(JoypadKeys::UP);
+        self.update();
+
+    }
+
+    pub fn release_up(&mut self) {
+        self.keys.remove(JoypadKeys::UP);
+        self.update();
+    }
+
+    pub fn press_down(&mut self) {
+        self.keys.insert(JoypadKeys::DOWN);
+        self.update();
+
+    }
+
+    pub fn release_down(&mut self) {
+        self.keys.remove(JoypadKeys::DOWN);
+        self.update();
+    }
+
+    pub fn press_left(&mut self) {
+        self.keys.insert(JoypadKeys::LEFT);
+        self.update();
+
+    }
+
+    pub fn release_left(&mut self) {
+        self.keys.remove(JoypadKeys::LEFT);
+        self.update();
+    }
+
+    pub fn press_right(&mut self) {
+        self.keys.insert(JoypadKeys::RIGHT);
+        self.update();
+    }
+
+    pub fn release_right(&mut self) {
+        self.keys.remove(JoypadKeys::RIGHT);
+        self.update();
+    }
+
+    pub fn press_a(&mut self) {
+        self.keys.insert(JoypadKeys::A);
+        self.update();
+
+    }
+
+    pub fn release_a(&mut self) {
+        self.keys.remove(JoypadKeys::A);
+        self.update();
+    }
+
+    pub fn press_b(&mut self) {
+        self.keys.insert(JoypadKeys::B);
+        self.update();
+
+    }
+
+    pub fn release_b(&mut self) {
+        self.keys.remove(JoypadKeys::B);
+        self.update();
+    }
+
+    pub fn press_select(&mut self) {
+        self.keys.insert(JoypadKeys::SELECT);
+        self.update();
+    }
+
+    pub fn release_select(&mut self) {
+        self.keys.remove(JoypadKeys::SELECT);
+        self.update();
+    }
+
+    pub fn press_start(&mut self) {
+        self.keys.insert(JoypadKeys::START);
+        self.update();
+    }
+
+    pub fn release_start(&mut self) {
+        self.keys.remove(JoypadKeys::START);
+        self.update();
     }
 }
 
@@ -50,18 +155,18 @@ fn joypad_down_key_test() {
 
 #[test]
 fn joypad_p1_read_test() {
-    let mut p1 = JoypadRegs::default();
-    let keys = JoypadKeys::A | JoypadKeys::B | JoypadKeys::LEFT;
+    let mut joypad = Joypad::default();
+    joypad.keys = JoypadKeys::A | JoypadKeys::B | JoypadKeys::LEFT;
 
     // READ BUTTONS
-    p1.insert(JoypadRegs::P15_OUT);
-    p1.remove(JoypadRegs::P14_OUT);
-    p1.merge_keys(keys);
-    assert_eq!(JoypadRegs::P15_OUT | JoypadRegs::P13_IN | JoypadRegs::P12_IN, p1);
+    joypad.regs.insert(JoypadRegs::P15_OUT);
+    joypad.regs.remove(JoypadRegs::P14_OUT);
+    joypad.update();
+    assert_eq!(JoypadRegs::P15_OUT | JoypadRegs::P13_IN | JoypadRegs::P12_IN, joypad.regs);
 
     // READ DIRECTION
-    p1.remove(JoypadRegs::P15_OUT);
-    p1.insert(JoypadRegs::P14_OUT);
-    p1.merge_keys(keys);
-    assert_eq!(JoypadRegs::P14_OUT | JoypadRegs::P13_IN | JoypadRegs::P12_IN | JoypadRegs::P10_IN, p1);
+    joypad.regs.remove(JoypadRegs::P15_OUT);
+    joypad.regs.insert(JoypadRegs::P14_OUT);
+    joypad.update();
+    assert_eq!(JoypadRegs::P14_OUT | JoypadRegs::P13_IN | JoypadRegs::P12_IN | JoypadRegs::P10_IN, joypad.regs);
 }

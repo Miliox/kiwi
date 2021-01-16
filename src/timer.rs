@@ -1,4 +1,4 @@
-use crate::ticks::TickConsumer;
+use crate::types::*;
 
 const COUNTER_DIV: [u64; 4] = [1024, 16, 64, 256];
 const DIVIDER_DIV: u64 = 256;
@@ -17,7 +17,6 @@ pub struct Timer {
     divider_acc: u64,
 }
 
-#[allow(dead_code)]
 impl Timer {
     pub fn control(&self) -> u8 {
         self.control
@@ -77,7 +76,7 @@ impl Default for Timer {
 }
 
 impl TickConsumer for Timer {
-    fn sync(&mut self, ticks: u64) {
+    fn step(&mut self, ticks: u64) {
         self.interrupt = false;
 
         if self.enable {
@@ -108,7 +107,7 @@ fn sync_test() {
     for _ in 0..64 {
         assert_eq!(0, timer.counter);
         assert_eq!(0, timer.divider);
-        timer.sync(4)
+        timer.step(4)
     }
     assert_eq!(1, timer.counter);
     assert_eq!(1, timer.divider);
@@ -120,7 +119,7 @@ fn sync_test() {
     for i in 0..64 {
         assert_eq!(1 + i / 16, timer.counter);
         assert_eq!(1, timer.divider);
-        timer.sync(4)
+        timer.step(4)
     }
 
     assert_eq!(5, timer.counter);
@@ -131,7 +130,7 @@ fn sync_test() {
     for i in 0..64 {
         assert_eq!(5 + i / 4, timer.counter);
         assert_eq!(2, timer.divider);
-        timer.sync(4)
+        timer.step(4)
     }
 
     assert_eq!(21, timer.counter);
@@ -142,7 +141,7 @@ fn sync_test() {
     for i in 0..=255 {
         assert_eq!(21, timer.counter);
         assert_eq!(3 + i / 64, timer.divider);
-        timer.sync(4)
+        timer.step(4)
     }
 
     assert_eq!(22, timer.counter);

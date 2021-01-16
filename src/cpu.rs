@@ -4,16 +4,14 @@ pub mod flags;
 pub mod interrupts;
 pub mod regs;
 
-use crate::cpu::asm::disassemble;
-use crate::cpu::asm::instruction_size;
-use crate::cpu::asm::instruction_ticks;
+use crate::types::*;
+use crate::cpu::asm::*;
 use crate::cpu::alu::Alu;
 use crate::cpu::regs::Regs;
 use crate::cpu::interrupts::Interrupts;
-use crate::types::MutRc;
+
 
 use crate::mmu::Mmu;
-use crate::mmu::Memory;
 
 #[allow(dead_code)]
 #[derive(Default)]
@@ -29,6 +27,10 @@ pub struct Cpu {
     triggered_interrupts: Interrupts,
 
     pub mmu: Option<MutRc<Mmu>>, // Reference to Memory Management Unit
+}
+
+impl TickProducer for Cpu {
+    fn step(&mut self) -> u64 { self.cycle() }
 }
 
 #[allow(dead_code)]
@@ -76,11 +78,11 @@ impl Cpu {
     }
 
     pub fn read_byte(&self, addr: u16) -> u8 {
-        self.mmu.as_ref().unwrap().borrow().read_byte(addr)
+        self.mmu.as_ref().unwrap().borrow().read(addr)
     }
 
     pub fn write_byte(&mut self, addr: u16, data: u8) {
-        self.mmu.as_ref().unwrap().borrow_mut().write_byte(addr, data);
+        self.mmu.as_ref().unwrap().borrow_mut().write(addr, data);
     }
 
     pub fn interrupt_check_routine(&mut self) -> bool {
