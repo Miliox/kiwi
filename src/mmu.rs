@@ -11,12 +11,6 @@ pub trait Memory {
 
     // Write a single byte to memory
     fn write_byte(&mut self, addr: u16, data: u8);
-
-    // Read a word from memory
-    fn read_word(&self, addr: u16) -> u16;
-
-    // Write a word into memory
-    fn write_word(&mut self, addr: u16, data: u16);
 }
 
 pub struct FlatMemory {
@@ -40,16 +34,6 @@ impl Memory for FlatMemory {
             self.memory[addr] = data;
         }
     }
-
-    fn read_word(&self, addr: u16) -> u16 {
-        u16::from_le_bytes([self.read_byte(addr), self.read_byte(addr + 1)])
-    }
-
-    fn write_word(&mut self, addr: u16, data: u16) {
-        let le_bytes = data.to_le_bytes();
-        self.write_byte(addr, le_bytes[0]);
-        self.write_byte(addr + 1, le_bytes[1]);
-    }
 }
 
 #[derive(Default)]
@@ -59,8 +43,6 @@ pub struct NullMemory {
 impl Memory for NullMemory {
     fn read_byte(&self, _addr: u16) -> u8 { 0 }
     fn write_byte(&mut self, _addr: u16, _data: u8) { }
-    fn read_word(&self, _addr: u16) -> u16 { 0 }
-    fn write_word(&mut self, _addr: u16, _data: u16) { }
 }
 
 pub struct Mmu {
@@ -210,15 +192,5 @@ impl Memory for Mmu {
             }
             _ => { }
         }
-    }
-
-    fn read_word(&self, addr: u16) -> u16 {
-        u16::from_le_bytes([self.read_byte(addr), self.read_byte(addr + 1)])
-    }
-
-    fn write_word(&mut self, addr: u16, data: u16) {
-        let le_bytes = data.to_le_bytes();
-        self.write_byte(addr, le_bytes[0]);
-        self.write_byte(addr + 1, le_bytes[1]);
     }
 }
