@@ -2,7 +2,6 @@ pub mod lcd_control;
 pub mod lcd_control_status;
 pub mod palette;
 
-use crate::types::*;
 use lcd_control::LcdControl;
 use lcd_control_status::LcdControlStatus;
 use lcd_control_status::LcdControlMode;
@@ -165,10 +164,8 @@ impl Gpu {
     pub fn vertical_blank_interrupt_requested(&self) -> bool {
         self.vertical_blank_interrupt_requested
     }
-}
 
-impl TickConsumer for Gpu {
-    fn step(&mut self, ticks: u64) {
+    pub fn step(&mut self, ticks: u64) {
         self.ticks += ticks;
         self.lcdc_status_interrupt_requested = false;
         self.vertical_blank_interrupt_requested = false;

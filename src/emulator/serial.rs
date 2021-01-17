@@ -1,4 +1,3 @@
-use crate::types::TickConsumer;
 use crate::types::TICKS_PER_SECOND;
 
 const SHIFT_PER_TICKS: u64 = TICKS_PER_SECOND / 8192;
@@ -11,6 +10,20 @@ pub struct Serial {
     shift_ticks: u64,
     transfering: bool,
     transfering_completion_interruption_requested: bool,
+}
+
+impl Default for Serial {
+    fn default() -> Self {
+        Self {
+            control: 0b0000_0001,
+            data: 0,
+
+            shift_bits: 0,
+            shift_ticks: 0,
+            transfering: false,
+            transfering_completion_interruption_requested: false,
+        }
+    }
 }
 
 impl Serial {
@@ -37,24 +50,8 @@ impl Serial {
     pub fn transfering_completion_interruption_requested(&self) -> bool {
         self.transfering_completion_interruption_requested
     }
-}
 
-impl Default for Serial {
-    fn default() -> Self {
-        Self {
-            control: 0b0000_0001,
-            data: 0,
-
-            shift_bits: 0,
-            shift_ticks: 0,
-            transfering: false,
-            transfering_completion_interruption_requested: false,
-        }
-    }
-}
-
-impl TickConsumer for Serial {
-    fn step(&mut self, ticks: u64) {
+    pub fn step(&mut self, ticks: u64) {
         self.transfering_completion_interruption_requested = false;
 
         if !self.transfering {

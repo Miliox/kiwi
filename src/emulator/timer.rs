@@ -1,5 +1,3 @@
-use crate::types::*;
-
 const COUNTER_DIV: [u64; 4] = [1024, 16, 64, 256];
 const DIVIDER_DIV: u64 = 256;
 
@@ -15,6 +13,24 @@ pub struct Timer {
     counter_acc: u64,
     counter_div: u64,
     divider_acc: u64,
+}
+
+impl Default for Timer {
+    fn default() -> Self {
+        Self {
+            enable: true,
+            overflow_interrupt_requested: false,
+
+            control: 0xff,
+            counter: 0,
+            divider: 0,
+            modulo: 0,
+
+            counter_acc: 0,
+            counter_div: COUNTER_DIV[3],
+            divider_acc: 0,
+        }
+    }
 }
 
 impl Timer {
@@ -55,28 +71,8 @@ impl Timer {
     pub fn overflow_interrupt_requested(&self) -> bool {
         self.overflow_interrupt_requested
     }
-}
 
-impl Default for Timer {
-    fn default() -> Self {
-        Self {
-            enable: true,
-            overflow_interrupt_requested: false,
-
-            control: 0xff,
-            counter: 0,
-            divider: 0,
-            modulo: 0,
-
-            counter_acc: 0,
-            counter_div: COUNTER_DIV[3],
-            divider_acc: 0,
-        }
-    }
-}
-
-impl TickConsumer for Timer {
-    fn step(&mut self, ticks: u64) {
+    pub fn step(&mut self, ticks: u64) {
         self.overflow_interrupt_requested = false;
 
         if self.enable {
