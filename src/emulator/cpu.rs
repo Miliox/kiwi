@@ -88,27 +88,22 @@ impl Cpu {
     }
 
     pub fn set_timer_overflow_interrupt_triggered(&mut self) {
-        println!("REQ TIMER INT");
         self.interruptions_requested.set_timer_overflow();
     }
 
     pub fn set_serial_transfering_completion_interruption_requested(&mut self) {
-        println!("REQ SERIAL INT");
         self.interruptions_requested.set_serial_transfer_complete();
     }
 
     pub fn set_lcdc_status_interruption_requested(&mut self) {
-        println!("REQ LCDC INT");
         self.interruptions_requested.set_lcdc_status();
     }
 
     pub fn set_vertical_blank_interruption_requested(&mut self) {
-        println!("REQ VBLANK INT");
         self.interruptions_requested.set_vertical_blank();
     }
 
     pub fn set_joypad_key_interruption_requested(&mut self) {
-        println!("REQ PAD INT");
         self.interruptions_requested.set_high_to_low_pin10_to_pin_13();
     }
 
@@ -131,19 +126,14 @@ impl Cpu {
         let i = self.interruptions_enabled & self.interruptions_requested;
 
         if i.vertical_blank() {
-            println!("VBLANK INT");
             self.begin_call(0x40);
         } else if i.lcdc_status() {
-            println!("LCDC INT");
             self.begin_call(0x48);
         } else if i.timer_overflow() {
-            println!("TIMER INT");
             self.begin_call(0x50);
         } else if i.serial_transfer_complete() {
-            println!("SERIAL INT");
             self.begin_call(0x58);
         } else if i.high_to_low_pin10_to_pin_13() {
-            println!("PAD INT");
             self.begin_call(0x60);
         } else {
             return false;

@@ -1,3 +1,4 @@
+#[allow(dead_code)]
 pub fn disassemble(opcode: u8, immediate8: u8, immediate16: u16) -> String {
     let opcode = opcode as usize;
     match opcode {
