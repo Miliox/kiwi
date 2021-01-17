@@ -165,6 +165,12 @@ impl Memory for Mmu {
                 }
             }
 
+            // TURN OFF BIOS
+            0xFF50 => {
+                println!("Disabled Bios");
+                self.bios_enable = false;
+            }
+
             _ => { }
         }
     }

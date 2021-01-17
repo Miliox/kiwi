@@ -14,7 +14,6 @@ use regs::Regs;
 use interrupts::Interrupts;
 
 #[allow(dead_code)]
-#[derive(Default)]
 pub struct Cpu {
     alu: Alu,      // Arithmetic Logic Unit
     regs: Regs,    // Registers
@@ -22,11 +21,26 @@ pub struct Cpu {
 
     interrupt_enable: bool,      // interrupt enable flag
     next_interrupt_enable: bool, // helper flag to emulate EI/DI after next instruction
-
     interruptions_enabled: Interrupts,
     interruptions_requested: Interrupts,
 
     pub mmu: Option<MutRc<Mmu>>, // Reference to Memory Management Unit
+}
+
+impl Default for Cpu {
+    fn default() -> Self {
+        Self {
+            alu: Alu::default(),
+            regs: Regs::default(),
+            next_pc: 0,
+
+            interrupt_enable: true,
+            next_interrupt_enable: true,
+            interruptions_enabled: Interrupts::default(),
+            interruptions_requested: Interrupts::default(),
+            mmu: None,
+        }
+    }
 }
 
 impl TickProducer for Cpu {
@@ -74,22 +88,27 @@ impl Cpu {
     }
 
     pub fn set_timer_overflow_interrupt_triggered(&mut self) {
+        println!("REQ TIMER INT");
         self.interruptions_requested.set_timer_overflow();
     }
 
     pub fn set_serial_transfering_completion_interruption_requested(&mut self) {
+        println!("REQ SERIAL INT");
         self.interruptions_requested.set_serial_transfer_complete();
     }
 
     pub fn set_lcdc_status_interruption_requested(&mut self) {
+        println!("REQ LCDC INT");
         self.interruptions_requested.set_lcdc_status();
     }
 
     pub fn set_vertical_blank_interruption_requested(&mut self) {
+        println!("REQ VBLANK INT");
         self.interruptions_requested.set_vertical_blank();
     }
 
     pub fn set_joypad_key_interruption_requested(&mut self) {
+        println!("REQ PAD INT");
         self.interruptions_requested.set_high_to_low_pin10_to_pin_13();
     }
 
@@ -109,17 +128,22 @@ impl Cpu {
             return false;
         }
 
-        let i = (self.interruptions_enabled & self.interruptions_requested) - Interrupts::UNUSED;
+        let i = self.interruptions_enabled & self.interruptions_requested;
 
         if i.vertical_blank() {
+            println!("VBLANK INT");
             self.begin_call(0x40);
         } else if i.lcdc_status() {
+            println!("LCDC INT");
             self.begin_call(0x48);
         } else if i.timer_overflow() {
+            println!("TIMER INT");
             self.begin_call(0x50);
         } else if i.serial_transfer_complete() {
+            println!("SERIAL INT");
             self.begin_call(0x58);
         } else if i.high_to_low_pin10_to_pin_13() {
+            println!("PAD INT");
             self.begin_call(0x60);
         } else {
             return false;
@@ -141,7 +165,7 @@ impl Cpu {
         let immediate8: u8 = self.read_byte(pc + 1);
         let immediate16: u16 = u16::from_le_bytes([immediate8, self.read_byte(pc + 2)]);
 
-        println!("${:04x} {:<15} {:04x?}", pc, disassemble(opcode, immediate8, immediate16), self.regs);
+        // println!("${:04x} {:<15} {:02x?}", pc, disassemble(opcode, immediate8, immediate16), self.regs);
 
         self.next_pc = pc + instruction_size(opcode);
         self.execute(opcode, immediate8, immediate16);
