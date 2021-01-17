@@ -66,7 +66,7 @@ impl Mmu {
 
 impl Memory for Mmu {
     fn read(&self, addr: u16) -> u8 {
-        if self.bios_enable && addr <= 0x100 {
+        if self.bios_enable && addr < 0x100 {
             return DMG_BIOS[addr as usize];
         }
 
