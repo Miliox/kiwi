@@ -9,6 +9,8 @@ use lcd_control_status::LcdControlMode;
 use palette::Palette;
 use sprite::Sprite;
 
+use crate::types::*;
+
 pub struct Gpu {
     lcdc: LcdControl,
     stat: LcdControlStatus,
@@ -31,9 +33,12 @@ pub struct Gpu {
     lcdc_status_interrupt_requested: bool,
     vertical_blank_interrupt_requested: bool,
 
-    video_ram: [u8; 0x2000],
+    back_buffer_index: usize,
+    front_buffer_index: usize,
+    frame_buffer: [Box<[u8; SCREEN_BYTES_TOTAL]>; 2],
 
-    object_attribute_ram: [Sprite; 40],
+    object_attribute_ram: Box<[Sprite; 40]>,
+    video_ram: Box<[u8; 0x2000]>,
 }
 
 impl Default for Gpu {
@@ -59,12 +64,17 @@ impl Default for Gpu {
             lcdc_status_interrupt_requested: false,
             vertical_blank_interrupt_requested: false,
 
-            video_ram: [0; 0x2000],
-            object_attribute_ram: [Sprite::default(); 40],
+            back_buffer_index: 0,
+            front_buffer_index: 1,
+            frame_buffer: [Box::new([0; SCREEN_BYTES_TOTAL]), Box::new([0; SCREEN_BYTES_TOTAL])],
+
+            object_attribute_ram: Box::new([Sprite::default(); 40]),
+            video_ram: Box::new([0; 0x2000]),
         }
     }
 }
 
+#[allow(dead_code)]
 impl Gpu {
     pub fn lcdc(&self) -> u8 {
         self.lcdc.into()
@@ -207,6 +217,10 @@ impl Gpu {
         self.video_ram[addr as usize] = data;
     }
 
+    pub fn frame_buffer(&self) -> &[u8; SCREEN_BYTES_TOTAL] {
+        &self.frame_buffer[self.front_buffer_index]
+    }
+
     pub fn read_object_attribute_ram(&self, addr: u16) -> u8 {
         let sprite_index = addr as usize / 4;
         let sprite_field = addr % 4;
@@ -282,6 +296,11 @@ impl Gpu {
                     self.ticks -= 172;
                     self.set_mode(LcdControlMode::HorizontalBlank);
                     // TODO: Render line
+
+                    // Swap frame buffers
+                    let (front, back) = (self.back_buffer_index, self.front_buffer_index);
+                    self.front_buffer_index = front;
+                    self.back_buffer_index  = back;
                 }
             }
         }
