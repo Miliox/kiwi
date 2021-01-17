@@ -18,10 +18,10 @@ impl Regs {
     pub fn f(&self) -> u8 { self.f }
     pub fn b(&self) -> u8 { self.b }
     pub fn c(&self) -> u8 { self.c }
-    pub fn d(&self) -> u8 { self.b }
-    pub fn e(&self) -> u8 { self.c }
-    pub fn h(&self) -> u8 { self.b }
-    pub fn l(&self) -> u8 { self.c }
+    pub fn d(&self) -> u8 { self.d }
+    pub fn e(&self) -> u8 { self.e }
+    pub fn h(&self) -> u8 { self.h }
+    pub fn l(&self) -> u8 { self.l }
 
     pub fn af(&self) -> u16 { u16::from_be_bytes([self.a, self.f]) }
     pub fn bc(&self) -> u16 { u16::from_be_bytes([self.b, self.c]) }
@@ -34,10 +34,10 @@ impl Regs {
     pub fn set_f(&mut self, r: u8) { self.f = r; }
     pub fn set_b(&mut self, r: u8) { self.b = r; }
     pub fn set_c(&mut self, r: u8) { self.c = r; }
-    pub fn set_d(&mut self, r: u8) { self.b = r; }
-    pub fn set_e(&mut self, r: u8) { self.c = r; }
-    pub fn set_h(&mut self, r: u8) { self.b = r; }
-    pub fn set_l(&mut self, r: u8) { self.c = r; }
+    pub fn set_d(&mut self, r: u8) { self.d = r; }
+    pub fn set_e(&mut self, r: u8) { self.e = r; }
+    pub fn set_h(&mut self, r: u8) { self.h = r; }
+    pub fn set_l(&mut self, r: u8) { self.l = r; }
 
     pub fn set_af(&mut self, r: u16) {
         let bytes = r.to_be_bytes();
@@ -83,10 +83,6 @@ impl std::fmt::Debug for Regs {
          .field("e", &self.e())
          .field("h", &self.h())
          .field("l", &self.l())
-         .field("af", &self.af())
-         .field("bc", &self.bc())
-         .field("de", &self.de())
-         .field("hl", &self.hl())
          .field("sp", &self.sp())
          .field("pc", &self.pc())
          .finish()
