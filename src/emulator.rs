@@ -65,8 +65,6 @@ impl Emulator {
             timer.clone(),
         ));
 
-        cpu.borrow_mut().mmu = Some(mmu.clone());
-
         Emulator {
             clock: 0,
             cartridge: cartridge,
@@ -94,7 +92,7 @@ impl Emulator {
     }
 
     pub fn step(&mut self) {
-        let ticks = self.cpu.borrow_mut().step();
+        let ticks = self.cpu.borrow_mut().cycle(&mut self.mmu.borrow_mut());
 
         self.serial.borrow_mut().step(ticks);
         if self.serial.borrow().transfering_completion_interruption_requested() {

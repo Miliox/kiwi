@@ -4,7 +4,6 @@ pub mod flags;
 pub mod interrupts;
 pub mod regs;
 
-use crate::types::*;
 use crate::emulator::mmu::Mmu;
 use crate::emulator::mmu::Memory;
 
@@ -23,8 +22,6 @@ pub struct Cpu {
     next_interrupt_enable: bool, // helper flag to emulate EI/DI after next instruction
     interruptions_enabled: Interrupts,
     interruptions_requested: Interrupts,
-
-    pub mmu: Option<MutRc<Mmu>>, // Reference to Memory Management Unit
 }
 
 impl Default for Cpu {
@@ -38,13 +35,8 @@ impl Default for Cpu {
             next_interrupt_enable: true,
             interruptions_enabled: Interrupts::default(),
             interruptions_requested: Interrupts::default(),
-            mmu: None,
         }
     }
-}
-
-impl TickProducer for Cpu {
-    fn step(&mut self) -> u64 { self.cycle() }
 }
 
 #[allow(dead_code)]
@@ -79,6 +71,22 @@ impl Cpu {
         self.interruptions_enabled = data.into();
     }
 
+    pub fn read(&mut self, mmu: &mut Mmu, addr: u16) -> u8 {
+        match addr {
+            0xFF0F => self.interruptions_requested(),
+            0xFFFF => self.enabled_interrupts(),
+            _ => mmu.read(addr)
+        }
+    }
+
+    pub fn write(&mut self, mmu: &mut Mmu, addr: u16, data: u8) {
+        match addr {
+            0xFF0F => self.set_interruptions_requested(data),
+            0xFFFF => self.set_enabled_interrupts(data),
+            _ => mmu.write(addr, data)
+        }
+    }
+
     pub fn interruptions_requested(&self) -> u8 {
         self.interruptions_requested.into()
     }
@@ -107,15 +115,7 @@ impl Cpu {
         self.interruptions_requested.set_high_to_low_pin10_to_pin_13();
     }
 
-    pub fn read_byte(&self, addr: u16) -> u8 {
-        self.mmu.as_ref().unwrap().borrow().read(addr)
-    }
-
-    pub fn write_byte(&mut self, addr: u16, data: u8) {
-        self.mmu.as_ref().unwrap().borrow_mut().write(addr, data);
-    }
-
-    pub fn interrupt_check_routine(&mut self) -> bool {
+    pub fn interrupt_check_routine(&mut self, mmu: &mut Mmu) -> bool {
         let interrupt_enable = self.interrupt_enable;
         self.interrupt_enable = self.next_interrupt_enable;
 
@@ -126,15 +126,15 @@ impl Cpu {
         let i = self.interruptions_enabled & self.interruptions_requested;
 
         if i.vertical_blank() {
-            self.begin_call(0x40);
+            self.begin_call(mmu, 0x40);
         } else if i.lcdc_status() {
-            self.begin_call(0x48);
+            self.begin_call(mmu, 0x48);
         } else if i.timer_overflow() {
-            self.begin_call(0x50);
+            self.begin_call(mmu, 0x50);
         } else if i.serial_transfer_complete() {
-            self.begin_call(0x58);
+            self.begin_call(mmu, 0x58);
         } else if i.high_to_low_pin10_to_pin_13() {
-            self.begin_call(0x60);
+            self.begin_call(mmu, 0x60);
         } else {
             return false;
         }
@@ -143,28 +143,28 @@ impl Cpu {
         return true;
     }
 
-    pub fn cycle(&mut self) -> u64 {
+    pub fn cycle(&mut self, mmu: &mut Mmu) -> u64 {
         let pc = self.regs.pc();
         self.next_pc = pc;
 
-        if self.interrupt_check_routine() {
+        if self.interrupt_check_routine(mmu) {
             return 4
         }
 
-        let opcode = self.read_byte(pc);
-        let immediate8: u8 = self.read_byte(pc + 1);
-        let immediate16: u16 = u16::from_le_bytes([immediate8, self.read_byte(pc + 2)]);
+        let opcode = self.read(mmu, pc);
+        let immediate8: u8 = self.read(mmu, pc + 1);
+        let immediate16: u16 = u16::from_le_bytes([immediate8, self.read(mmu, pc + 2)]);
 
         // println!("${:04x} {:<15} {:02x?}", pc, disassemble(opcode, immediate8, immediate16), self.regs);
 
         self.next_pc = pc + instruction_size(opcode);
-        self.execute(opcode, immediate8, immediate16);
+        self.execute(mmu, opcode, immediate8, immediate16);
         self.regs.set_pc(self.next_pc);
 
         instruction_ticks(opcode)
     }
 
-    fn execute(&mut self, opcode: u8, immediate8: u8, immediate16: u16) {
+    fn execute(&mut self, mmu: &mut Mmu, opcode: u8, immediate8: u8, immediate16: u16) {
         match opcode {
             0x00 => {
                 // NOP
@@ -175,7 +175,7 @@ impl Cpu {
             }
             0x02 => {
                 // LD (BC), A
-                self.write_byte(self.regs.bc(), self.regs.a());
+                self.write(mmu, self.regs.bc(), self.regs.a());
             },
             0x03 => {
                 // INC BC
@@ -200,8 +200,8 @@ impl Cpu {
             0x08 => {
                 // LD ($0000),SP
                 let le_bytes = self.regs.sp().to_le_bytes();
-                self.write_byte(immediate16, le_bytes[0]);
-                self.write_byte(immediate16 + 1, le_bytes[1]);
+                self.write(mmu, immediate16, le_bytes[0]);
+                self.write(mmu, immediate16 + 1, le_bytes[1]);
             }
             0x09 => {
                 // ADD HL, BC
@@ -209,7 +209,7 @@ impl Cpu {
             }
             0x0A => {
                 // LD A, (BC)
-                let data = self.read_bc_ref();
+                let data = self.read_bc_ref(mmu);
                 self.regs.set_a(data);
             }
             0x0B => {
@@ -241,7 +241,7 @@ impl Cpu {
             }
             0x12 => {
                 // LD (DE), A
-                self.write_byte(self.regs.de(), self.regs.a());
+                self.write(mmu, self.regs.de(), self.regs.a());
             }
             0x13 => {
                 // INC DE
@@ -273,7 +273,8 @@ impl Cpu {
             }
             0x1A => {
                 // LD A, (DE)
-                self.regs.set_a(self.read_de_ref());
+                let data = self.read_de_ref(mmu);
+                self.regs.set_a(data);
             }
             0x1B => {
                 // DEC DE
@@ -307,7 +308,7 @@ impl Cpu {
             }
             0x22 => {
                 // LDI (HL), A
-                self.write_hl_ref_and_increment_hl(self.regs.a());
+                self.write_hl_ref_and_increment_hl(mmu, self.regs.a());
             }
             0x23 => {
                 // INC HL
@@ -341,7 +342,7 @@ impl Cpu {
             }
             0x2A => {
                 // LDI A, (HL)
-                let data = self.read_hl_ref_and_increment_hl();
+                let data = self.read_hl_ref_and_increment_hl(mmu);
                 self.regs.set_a(data);
             }
             0x2B => {
@@ -376,7 +377,7 @@ impl Cpu {
             }
             0x32 => {
                 // LDD (HL), A
-                self.write_hl_ref_and_decrement_hl(self.regs.a());
+                self.write_hl_ref_and_decrement_hl(mmu, self.regs.a());
             }
             0x33 => {
                 // INC SP
@@ -385,18 +386,20 @@ impl Cpu {
             0x34 => {
                 // INC (HL)
                 let addr = self.regs.hl();
-                let data = self.alu.inc(self.read_byte(addr));
-                self.write_byte(addr, data);
+                let data = self.read(mmu, addr);
+                let data = self.alu.inc(data);
+                self.write(mmu, addr, data);
             }
             0x35 => {
                 // DEC (HL)
                 let addr = self.regs.hl();
-                let data = self.alu.dec(self.read_byte(addr));
-                self.write_byte(addr, data);
+                let data = self.read(mmu, addr);
+                let data = self.alu.dec(data);
+                self.write(mmu, addr, data);
             }
             0x36 => {
                 // LD (HL), $00
-                self.write_byte(self.regs.hl(), immediate8);
+                self.write(mmu, self.regs.hl(), immediate8);
             }
             0x37 => {
                 // SCF
@@ -414,7 +417,7 @@ impl Cpu {
             }
             0x3A => {
                 // LDD A, (HL)
-                let data = self.read_hl_ref_and_decrement_hl();
+                let data = self.read_hl_ref_and_decrement_hl(mmu);
                 self.regs.set_a(data);
             }
             0x3B => {
@@ -462,7 +465,8 @@ impl Cpu {
             }
             0x46 => {
                 // LD B, (HL)
-                self.regs.set_b(self.read_hl_ref());
+                let data = self.read_hl_ref(mmu);
+                self.regs.set_b(data);
             }
             0x47 => {
                 // LD B, A
@@ -493,7 +497,8 @@ impl Cpu {
             }
             0x4E => {
                 // LD C, (HL)
-                self.regs.set_c(self.read_hl_ref());
+                let data = self.read_hl_ref(mmu);
+                self.regs.set_c(data);
             }
             0x4F => {
                 // LD C, A
@@ -524,7 +529,8 @@ impl Cpu {
             }
             0x56 => {
                 // LD D, (HL)
-                self.regs.set_d(self.read_hl_ref());
+                let data = self.read_hl_ref(mmu);
+                self.regs.set_d(data);
             }
             0x57 => {
                 // LD D, A
@@ -555,7 +561,8 @@ impl Cpu {
             }
             0x5E => {
                 // LD E, (HL)
-                self.regs.set_e(self.read_hl_ref());
+                let data = self.read_hl_ref(mmu);
+                self.regs.set_e(data);
             }
             0x5F => {
                 // LD E, A
@@ -586,7 +593,8 @@ impl Cpu {
             }
             0x66 => {
                 // LD H, (HL)
-                self.regs.set_h(self.read_hl_ref());
+                let data = self.read_hl_ref(mmu);
+                self.regs.set_h(data);
             }
             0x67 => {
                 // LD H, A
@@ -617,7 +625,8 @@ impl Cpu {
             }
             0x6E => {
                 // LD L, (HL)
-                self.regs.set_l(self.read_hl_ref());
+                let data = self.read_hl_ref(mmu);
+                self.regs.set_l(data);
             }
             0x6F => {
                 // LD L, A
@@ -625,34 +634,34 @@ impl Cpu {
             }
             0x70 => {
                 // LD (HL), B
-                self.write_byte(self.regs.hl(), self.regs.b());
+                self.write(mmu, self.regs.hl(), self.regs.b());
             }
             0x71 => {
                 // LD (HL), C
-                self.write_byte(self.regs.hl(), self.regs.c());
+                self.write(mmu, self.regs.hl(), self.regs.c());
             }
             0x72 => {
                 // LD (HL), D
-                self.write_byte(self.regs.hl(), self.regs.d());
+                self.write(mmu, self.regs.hl(), self.regs.d());
             }
             0x73 => {
                 // LD (HL), E
-                self.write_byte(self.regs.hl(), self.regs.e());
+                self.write(mmu, self.regs.hl(), self.regs.e());
             }
             0x74 => {
                 // LD (HL), H
-                self.write_byte(self.regs.hl(), self.regs.h());
+                self.write(mmu, self.regs.hl(), self.regs.h());
             }
             0x75 => {
                 // LD (HL), L
-                self.write_byte(self.regs.hl(), self.regs.l());
+                self.write(mmu, self.regs.hl(), self.regs.l());
             }
             0x76 => {
                 // LD (HL), (HL)
             }
             0x77 => {
                 // LD (HL), A
-                self.write_byte(self.regs.hl(), self.regs.a());
+                self.write(mmu, self.regs.hl(), self.regs.a());
             }
             0x78 => {
                 // LD A, B
@@ -680,7 +689,8 @@ impl Cpu {
             }
             0x7E => {
                 // LD A, (HL)
-                self.regs.set_a(self.read_hl_ref());
+                let data = self.read_hl_ref(mmu);
+                self.regs.set_a(data);
             }
             0x7F => {
                 // LD A, A
@@ -711,7 +721,8 @@ impl Cpu {
             }
             0x86 => {
                 // ADD A, (HL)
-                self.regs.set_a(self.alu.add(self.regs.a(), self.read_hl_ref()));
+                let data = self.read_hl_ref(mmu);
+                self.regs.set_a(self.alu.add(self.regs.a(), data));
             }
             0x87 => {
                 // ADD A, A
@@ -743,7 +754,8 @@ impl Cpu {
             }
             0x8E => {
                 // ADC A, (HL)
-                self.regs.set_a(self.alu.adc(self.regs.a(), self.read_hl_ref()));
+                let data = self.read_hl_ref(mmu);
+                self.regs.set_a(self.alu.adc(self.regs.a(), data));
             }
             0x8F => {
                 // ADC A, A
@@ -775,7 +787,8 @@ impl Cpu {
             }
             0x96 => {
                 // SUB A, (HL)
-                self.regs.set_a(self.alu.sub(self.regs.a(), self.read_hl_ref()));
+                let data = self.read_hl_ref(mmu);
+                self.regs.set_a(self.alu.sub(self.regs.a(), data));
             }
             0x97 => {
                 // SUB A, A
@@ -807,7 +820,8 @@ impl Cpu {
             }
             0x9E => {
                 // SBC A, (HL)
-                self.regs.set_a(self.alu.sbc(self.regs.a(), self.read_hl_ref()));
+                let data = self.read_hl_ref(mmu);
+                self.regs.set_a(self.alu.sbc(self.regs.a(), data));
             }
             0x9F => {
                 // SBC A, A
@@ -839,7 +853,8 @@ impl Cpu {
             }
             0xA6 => {
                 // AND A, (HL)
-                self.regs.set_a(self.alu.and(self.regs.a(), self.read_hl_ref()));
+                let data = self.read_hl_ref(mmu);
+                self.regs.set_a(self.alu.and(self.regs.a(), data));
             }
             0xA7 => {
                 // AND A, A
@@ -871,7 +886,8 @@ impl Cpu {
             }
             0xAE => {
                 // XOR A, (HL)
-                self.regs.set_a(self.alu.xor(self.regs.a(), self.read_hl_ref()));
+                let data = self.read_hl_ref(mmu);
+                self.regs.set_a(self.alu.xor(self.regs.a(), data));
             }
             0xAF => {
                 // XOR A, A
@@ -903,7 +919,8 @@ impl Cpu {
             }
             0xB6 => {
                 // OR A, (HL)
-                self.regs.set_a(self.alu.or(self.regs.a(), self.read_hl_ref()));
+                let data = self.read_hl_ref(mmu);
+                self.regs.set_a(self.alu.or(self.regs.a(), data));
             }
             0xB7 => {
                 // OR A, A
@@ -935,7 +952,8 @@ impl Cpu {
             }
             0xBE => {
                 // CP A, (HL)
-                self.alu.compare(self.regs.a(), self.read_hl_ref());
+                let data = self.read_hl_ref(mmu);
+                self.alu.compare(self.regs.a(), data);
             }
             0xBF => {
                 // CP A, A
@@ -944,12 +962,12 @@ impl Cpu {
             0xC0 => {
                 // RET NZ
                 if !self.zero() {
-                    self.end_call();
+                    self.end_call(mmu);
                 }
             }
             0xC1 => {
                 // POP BC
-                let bc = self.pop();
+                let bc = self.pop(mmu);
                 self.regs.set_bc(bc);
             }
             0xC2 => {
@@ -965,12 +983,12 @@ impl Cpu {
             0xC4 => {
                 // CALL NZ $0000
                 if !self.zero() {
-                    self.begin_call(immediate16)
+                    self.begin_call(mmu, immediate16)
                 }
             }
             0xC5 => {
                 // PUSH BC
-                self.push(self.regs.bc());
+                self.push(mmu, self.regs.bc());
             }
             0xC6 => {
                 // ADD A, $00
@@ -978,17 +996,17 @@ impl Cpu {
             }
             0xC7 => {
                 // RST $00
-                self.begin_call(0x00);
+                self.begin_call(mmu, 0x00);
             }
             0xC8 => {
                 // RET Z
                 if self.zero() {
-                    self.end_call();
+                    self.end_call(mmu);
                 }
             }
             0xC9 => {
                 // RET
-                self.end_call();
+                self.end_call(mmu);
             }
             0xCA => {
                 // JP Z $0000
@@ -998,17 +1016,17 @@ impl Cpu {
             }
             0xCB => {
                 // PREFIX CB
-                self.execute_cb_ext(immediate8)
+                self.execute_cb_ext(mmu, immediate8)
             }
             0xCC => {
                 // CALL Z $0000
                 if self.zero() {
-                    self.begin_call(immediate16)
+                    self.begin_call(mmu, immediate16)
                 }
             }
             0xCD => {
                 // CALL $0000
-                self.begin_call(immediate16)
+                self.begin_call(mmu, immediate16)
             }
             0xCE => {
                 // ADC A, $00
@@ -1016,17 +1034,17 @@ impl Cpu {
             }
             0xCF => {
                 // RST $08
-                self.begin_call(0x08);
+                self.begin_call(mmu, 0x08);
             }
             0xD0 => {
                 // RET NC
                 if !self.carry() {
-                    self.end_call();
+                    self.end_call(mmu);
                 }
             }
             0xD1 => {
                 // POP DE
-                let de = self.pop();
+                let de = self.pop(mmu);
                 self.regs.set_de(de);
             }
             0xD2 => {
@@ -1041,12 +1059,12 @@ impl Cpu {
             0xD4 => {
                 // CALL NC $0000
                 if !self.carry() {
-                    self.begin_call(immediate16)
+                    self.begin_call(mmu, immediate16)
                 }
             }
             0xD5 => {
                 // PUSH DE
-                self.push(self.regs.de());
+                self.push(mmu, self.regs.de());
             }
             0xD6 => {
                 // SUB A, $00
@@ -1054,17 +1072,17 @@ impl Cpu {
             }
             0xD7 => {
                 // RST $10
-                self.begin_call(0x10);
+                self.begin_call(mmu, 0x10);
             }
             0xD8 => {
                 // RET C
                 if self.carry() {
-                    self.end_call();
+                    self.end_call(mmu);
                 }
             }
             0xD9 => {
                 // RETI
-                self.end_call();
+                self.end_call(mmu);
                 self.interrupt_enable = true;
             }
             0xDA => {
@@ -1079,7 +1097,7 @@ impl Cpu {
             0xDC => {
                 // CALL C $0000
                 if self.carry() {
-                    self.begin_call(immediate16)
+                    self.begin_call(mmu, immediate16)
                 }
             }
             0xDD => {
@@ -1091,24 +1109,24 @@ impl Cpu {
             }
             0xDF => {
                 // RST $18
-                self.begin_call(0x18);
+                self.begin_call(mmu, 0x18);
             }
             0xE0 => {
                 // LDH ($00), A
                 let addr: u16 = 0xff00u16 | immediate8 as u16;
                 let data = self.regs.a();
-                self.write_byte(addr, data);
+                self.write(mmu, addr, data);
             }
             0xE1 => {
                 // POP HL
-                let hl = self.pop();
+                let hl = self.pop(mmu);
                 self.regs.set_hl(hl);
             }
             0xE2 => {
                 // LDH (C), A
                 let addr = 0xff00u16 | self.regs.c() as u16;
                 let data = self.regs.a();
-                self.write_byte(addr, data);
+                self.write(mmu, addr, data);
             }
             0xE3 => {
                 // [E3] - INVALID
@@ -1118,7 +1136,7 @@ impl Cpu {
             }
             0xE5 => {
                 // PUSH HL
-                self.push(self.regs.hl());
+                self.push(mmu, self.regs.hl());
             }
             0xE6 => {
                 // AND $00
@@ -1126,7 +1144,7 @@ impl Cpu {
             }
             0xE7 => {
                 // RST $20
-                self.begin_call(0x20);
+                self.begin_call(mmu, 0x20);
             }
             0xE8 => {
                 // ADD SP, $00
@@ -1138,7 +1156,7 @@ impl Cpu {
             }
             0xEA => {
                 // LD ($0000), A
-                self.write_byte(immediate16, self.regs.a());
+                self.write(mmu, immediate16, self.regs.a());
             }
             0xEB => {
                 // [EB] - INVALID
@@ -1155,24 +1173,24 @@ impl Cpu {
             }
             0xEF => {
                 // RST $28
-                self.begin_call(0x28);
+                self.begin_call(mmu, 0x28);
             }
             0xF0 => {
                 // LDH A, ($00)
                 let addr: u16 = 0xff00u16 | immediate8 as u16;
-                let data = self.read_byte(addr);
+                let data = self.read(mmu, addr);
                 self.regs.set_a(data);
             }
             0xF1 => {
                 // POP AF
-                let af = self.pop();
+                let af = self.pop(mmu);
                 self.regs.set_af(af);
                 self.alu.flags = self.regs.f().into();
             }
             0xF2 => {
                 // LD A, ($FF00+C)
                 let addr = 0xff00u16 | self.regs.c() as u16;
-                let data = self.read_byte(addr);
+                let data = self.read(mmu, addr);
                 self.regs.set_a(data);
             }
             0xF3 => {
@@ -1185,7 +1203,7 @@ impl Cpu {
             0xF5 => {
                 // PUSH AF
                 self.regs.set_f(self.alu.flags.into());
-                self.push(self.regs.af());
+                self.push(mmu ,self.regs.af());
             }
             0xF6 => {
                 // OR $00
@@ -1193,7 +1211,7 @@ impl Cpu {
             }
             0xF7 => {
                 // RST $30
-                self.begin_call(0x30);
+                self.begin_call(mmu, 0x30);
             }
             0xF8 => {
                 // LD HL,SP+$00
@@ -1205,7 +1223,7 @@ impl Cpu {
             }
             0xFA => {
                 // LD A, ($0000)
-                let data = self.read_byte(immediate16);
+                let data = self.read(mmu, immediate16);
                 self.regs.set_a(data);
             }
             0xFB => {
@@ -1224,12 +1242,12 @@ impl Cpu {
             }
             0xFF => {
                 // RST $38
-                self.begin_call(0x38);
+                self.begin_call(mmu, 0x38);
             }
         }
     }
 
-    fn execute_cb_ext(&mut self, cb_code: u8) {
+    fn execute_cb_ext(&mut self, mmu: &mut Mmu, cb_code: u8) {
         let arg = match cb_code & 0x7 {
             0x0 => self.regs.b(),
             0x1 => self.regs.c(),
@@ -1237,7 +1255,7 @@ impl Cpu {
             0x3 => self.regs.e(),
             0x4 => self.regs.h(),
             0x5 => self.regs.l(),
-            0x6 => self.read_hl_ref(),
+            0x6 => self.read_hl_ref(mmu),
             0x7 => self.regs.a(),
             _ => panic!()
         };
@@ -1302,67 +1320,67 @@ impl Cpu {
                 0x3 => self.regs.set_e(ret),
                 0x4 => self.regs.set_h(ret),
                 0x5 => self.regs.set_l(ret),
-                0x6 => { self.write_byte(self.regs.hl(), ret); }
+                0x6 => { self.write(mmu, self.regs.hl(), ret); }
                 0x7 => self.regs.set_a(ret),
                 _ => panic!()
             }
         }
     }
 
-    fn read_bc_ref(&mut self) -> u8 {
-        self.read_byte(self.regs.bc())
+    fn read_bc_ref(&mut self, mmu: &mut Mmu) -> u8 {
+        self.read(mmu, self.regs.bc())
     }
 
-    fn read_de_ref(&self) -> u8 {
-        self.read_byte(self.regs.de())
+    fn read_de_ref(&mut self, mmu: &mut Mmu) -> u8 {
+        self.read(mmu, self.regs.de())
     }
 
-    fn read_hl_ref(&self) -> u8 {
-        self.read_byte(self.regs.hl())
+    fn read_hl_ref(&mut self, mmu: &mut Mmu) -> u8 {
+        self.read(mmu, self.regs.hl())
     }
 
-    fn read_hl_ref_and_increment_hl(&mut self) -> u8 {
-        let ret = self.read_hl_ref();
+    fn read_hl_ref_and_increment_hl(&mut self, mmu: &mut Mmu) -> u8 {
+        let ret = self.read_hl_ref(mmu);
         self.regs.set_hl(self.alu.inc16(self.regs.hl()));
         ret
     }
 
-    fn read_hl_ref_and_decrement_hl(&mut self) -> u8 {
-        let ret = self.read_hl_ref();
+    fn read_hl_ref_and_decrement_hl(&mut self, mmu: &mut Mmu) -> u8 {
+        let ret = self.read_hl_ref(mmu);
         self.regs.set_hl(self.alu.dec16(self.regs.hl()));
         ret
     }
 
-    fn write_hl_ref(&mut self, data: u8) {
-        self.write_byte(self.regs.hl(), data);
+    fn write_hl_ref(&mut self, mmu: &mut Mmu, data: u8) {
+        self.write(mmu, self.regs.hl(), data);
     }
 
-    fn write_hl_ref_and_increment_hl(&mut self, data: u8) {
+    fn write_hl_ref_and_increment_hl(&mut self, mmu: &mut Mmu, data: u8) {
         let addr = self.regs.hl();
-        self.write_byte(addr, data);
+        self.write(mmu, addr, data);
         self.regs.set_hl(self.alu.inc16(addr));
     }
 
-    fn write_hl_ref_and_decrement_hl(&mut self, data: u8) {
+    fn write_hl_ref_and_decrement_hl(&mut self, mmu: &mut Mmu, data: u8) {
         let addr = self.regs.hl();
-        self.write_byte(addr, data);
+        self.write(mmu, addr, data);
         self.regs.set_hl(self.alu.dec16(addr));
     }
 
-    fn push(&mut self, r16: u16) {
+    fn push(&mut self, mmu: &mut Mmu, r16: u16) {
         let be_bytes = r16.to_be_bytes();
 
         let sp = self.regs.sp();
-        self.write_byte(sp, be_bytes[0]);
-        self.write_byte(sp.wrapping_sub(1), be_bytes[1]);
+        self.write(mmu, sp, be_bytes[0]);
+        self.write(mmu, sp.wrapping_sub(1), be_bytes[1]);
 
         self.regs.set_sp(sp.wrapping_sub(2));
     }
 
-    fn pop(&mut self) -> u16 {
+    fn pop(&mut self, mmu: &mut Mmu) -> u16 {
         let sp = self.regs.sp();
-        let l = self.read_byte(sp.wrapping_add(1));
-        let h = self.read_byte(sp.wrapping_add(2));
+        let l = self.read(mmu, sp.wrapping_add(1));
+        let h = self.read(mmu, sp.wrapping_add(2));
         self.regs.set_sp(sp.wrapping_add(2));
         u16::from_be_bytes([h, l])
     }
@@ -1375,13 +1393,13 @@ impl Cpu {
         self.next_pc = self.next_pc.wrapping_add((offset as i8) as u16)
     }
 
-    fn begin_call(&mut self, call_addr: u16) {
-        self.push(self.next_pc);
+    fn begin_call(&mut self, mmu: &mut Mmu, call_addr: u16) {
+        self.push(mmu, self.next_pc);
         self.next_pc = call_addr;
     }
 
-    fn end_call(&mut self) {
-        self.next_pc = self.pop();
+    fn end_call(&mut self, mmu: &mut Mmu) {
+        self.next_pc = self.pop(mmu);
     }
 }
 

@@ -6,10 +6,6 @@ pub const TICKS_PER_FRAME: u64 = TICKS_PER_SECOND / 60;
 
 pub type MutRc<T> = Rc<RefCell<T>>;
 
-pub trait TickProducer {
-    fn step(&mut self) -> u64;
-}
-
 pub trait TickConsumer {
     fn step(&mut self, ticks: u64);
 }
