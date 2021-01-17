@@ -14,18 +14,10 @@ pub struct Mmu {
     /// $0000..=$0100
     bios_enable: bool,
 
-    /// Video RAM
-    /// - $8000..=$9FFF
-    vram: Box<[u8; 0x2000]>,
-
     /// Internal RAM
     /// - $C000..=$DFFF
     /// - $E000..=$FDFF (Echo)
     iram: Box<[u8; 0x2000]>,
-
-    /// Object (sprite) Attribute RAM
-    /// - $FE00..=$FE9F
-    oram: Box<[u8; 160]>,
 
     /// High RAM (Zero Page)
     /// - $FF80-$FFFE
@@ -48,10 +40,7 @@ impl Mmu {
     pub fn new(cartridge: MutRc<Cartridge>, cpu: MutRc<Cpu>, gpu: MutRc<Gpu>, joypad: MutRc<Joypad>, serial: MutRc<Serial>, timer: MutRc<Timer>) -> Self {
         Self {
             bios_enable: true,
-
-            vram: Box::new([0; 0x2000]),
             iram: Box::new([0; 0x2000]),
-            oram: Box::new([0; 160]),
             hram: Box::new([0; 127]),
 
             cartridge: cartridge,
@@ -72,10 +61,10 @@ impl Memory for Mmu {
 
         match addr {
             0x0000..=0x7FFF => self.cartridge.borrow().read_rom(addr),
-            0x8000..=0x9FFF => self.vram[(addr - 0x8000u16) as usize],
+            0x8000..=0x9FFF => self.gpu.borrow().read_video_ram(addr - 0x8000u16),
             0xC000..=0xDFFF => self.iram[(addr - 0xC000u16) as usize],
             0xE000..=0xFDFF => self.iram[(addr - 0xE000u16) as usize],
-            0xFE00..=0xFE9F => self.oram[(addr - 0xFE00u16) as usize],
+            0xFE00..=0xFE9F => self.gpu.borrow().read_object_attribute_ram(addr - 0xFE00u16),
             0xFF80..=0xFFFE => self.hram[(addr - 0xFF80u16) as usize],
 
             // Cartridge
@@ -117,10 +106,10 @@ impl Memory for Mmu {
 
     fn write(&mut self, addr: u16, data: u8) {
         match addr {
-            0x8000..=0x9FFF => self.vram[(addr - 0x8000) as usize] = data,
+            0x8000..=0x9FFF => self.gpu.borrow_mut().write_video_ram(addr - 0x8000, data),
             0xC000..=0xDFFF => self.iram[(addr - 0xC000) as usize] = data,
             0xE000..=0xFDFF => self.iram[(addr - 0xE000) as usize] = data,
-            0xFE00..=0xFE9F => self.oram[(addr - 0xFE00) as usize] = data,
+            0xFE00..=0xFE9F => self.gpu.borrow_mut().write_object_attribute_ram(addr - 0xFE00, data),
             0xFF80..=0xFFFE => self.hram[(addr - 0xFF80) as usize] = data,
 
             // Cartridge
@@ -158,10 +147,14 @@ impl Memory for Mmu {
             // DMA
             0xFF46 => {
                 if data <= 0xF1 {
-                    let src = u16::from_be_bytes([data, 0x00]);
+                    println!("DMA ${:02x}00", data);
+
+                    let addr = u16::from_be_bytes([data, 0x00]);
+                    let mut oam: [u8; 160] = [0; 160];
                     for i in 0..160 {
-                        self.oram[i] = self.read(src + i as u16)
+                        oam[i] = self.read(addr + i as u16)
                     }
+                    self.gpu.borrow_mut().populate_object_attribute_ram(&oam);
                 }
             }
 

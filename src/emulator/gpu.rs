@@ -1,13 +1,14 @@
 pub mod lcd_control;
 pub mod lcd_control_status;
 pub mod palette;
+pub mod sprite;
 
 use lcd_control::LcdControl;
 use lcd_control_status::LcdControlStatus;
 use lcd_control_status::LcdControlMode;
 use palette::Palette;
+use sprite::Sprite;
 
-#[derive(Default)]
 pub struct Gpu {
     lcdc: LcdControl,
     stat: LcdControlStatus,
@@ -29,6 +30,39 @@ pub struct Gpu {
     ticks: u64,
     lcdc_status_interrupt_requested: bool,
     vertical_blank_interrupt_requested: bool,
+
+    video_ram: [u8; 0x2000],
+
+    object_attribute_ram: [Sprite; 40],
+}
+
+impl Default for Gpu {
+    fn default() -> Self {
+        Self {
+            lcdc: LcdControl::default(),
+            stat: LcdControlStatus::default(),
+
+            scanline: 0,
+            scanline_compare: 0,
+
+            scroll_y: 0,
+            scroll_x: 0,
+
+            window_x: 0,
+            window_y: 0,
+
+            background_palette: Palette::default(),
+            object_palette_0: Palette::default(),
+            object_palette_1: Palette::default(),
+
+            ticks: 0,
+            lcdc_status_interrupt_requested: false,
+            vertical_blank_interrupt_requested: false,
+
+            video_ram: [0; 0x2000],
+            object_attribute_ram: [Sprite::default(); 40],
+        }
+    }
 }
 
 impl Gpu {
@@ -163,6 +197,48 @@ impl Gpu {
 
     pub fn vertical_blank_interrupt_requested(&self) -> bool {
         self.vertical_blank_interrupt_requested
+    }
+
+    pub fn read_video_ram(&self, addr: u16) -> u8 {
+        self.video_ram[addr as usize]
+    }
+
+    pub fn write_video_ram(&mut self, addr: u16, data: u8) {
+        self.video_ram[addr as usize] = data;
+    }
+
+    pub fn read_object_attribute_ram(&self, addr: u16) -> u8 {
+        let sprite_index = addr as usize / 4;
+        let sprite_field = addr % 4;
+        match sprite_field {
+            0 => self.object_attribute_ram[sprite_index].y(),
+            1 => self.object_attribute_ram[sprite_index].x(),
+            2 => self.object_attribute_ram[sprite_index].tile(),
+            3 => self.object_attribute_ram[sprite_index].flags(),
+            _ => panic!()
+        }
+    }
+
+    pub fn write_object_attribute_ram(&mut self, addr: u16, data: u8) {
+        let sprite_index = addr as usize / 4;
+        let sprite_field = addr % 4;
+        match sprite_field {
+            0 => self.object_attribute_ram[sprite_index].set_y(data),
+            1 => self.object_attribute_ram[sprite_index].set_x(data),
+            2 => self.object_attribute_ram[sprite_index].set_tile(data),
+            3 => self.object_attribute_ram[sprite_index].set_flags(data),
+            _ => panic!()
+        }
+    }
+
+    pub fn populate_object_attribute_ram(&mut self, data: &[u8; 160]) {
+        for sprite_index in 0..40 {
+            let beg = sprite_index * 4;
+            self.object_attribute_ram[sprite_index] = [data[beg+0],
+                                                       data[beg+1],
+                                                       data[beg+2],
+                                                       data[beg+3]].into();
+        }
     }
 
     pub fn step(&mut self, ticks: u64) {
