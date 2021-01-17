@@ -21,6 +21,7 @@ use timer::*;
 
 use sdl2::event::Event;
 use sdl2::keyboard::*;
+use sdl2::render::Texture;
 
 const BUTTON_A: Keycode = Keycode::Space;
 const BUTTON_B: Keycode = Keycode::LShift;
@@ -89,6 +90,12 @@ impl Emulator {
                 break;
             }
         }
+    }
+
+    pub fn blit_frame_to_texture(&mut self, texture: &mut Texture) {
+        let gpu = self.gpu.borrow();
+        let frame = gpu.frame_buffer();
+        texture.update(None, frame, SCREEN_BUFFER_WIDTH).unwrap();
     }
 
     pub fn step(&mut self) {

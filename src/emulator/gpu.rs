@@ -35,7 +35,7 @@ pub struct Gpu {
 
     back_buffer_index: usize,
     front_buffer_index: usize,
-    frame_buffer: [Box<[u8; SCREEN_BYTES_TOTAL]>; 2],
+    frame_buffer: [Box<[u8; SCREEN_BUFFER_SIZE]>; 2],
 
     object_attribute_ram: Box<[Sprite; 40]>,
     video_ram: Box<[u8; 0x2000]>,
@@ -43,6 +43,17 @@ pub struct Gpu {
 
 impl Default for Gpu {
     fn default() -> Self {
+        let mut blank_frame: [u8; SCREEN_BUFFER_SIZE] = [0; SCREEN_BUFFER_SIZE];
+        for index in 0..blank_frame.len() {
+            match index % 4 {
+                0 => blank_frame[index] = SHADE_0.a, // A
+                1 => blank_frame[index] = SHADE_0.r, // R
+                2 => blank_frame[index] = SHADE_0.g, // G
+                3 => blank_frame[index] = SHADE_0.b, // B
+                _ => panic!(),
+            }
+        }
+
         Self {
             lcdc: LcdControl::default(),
             stat: LcdControlStatus::default(),
@@ -66,7 +77,7 @@ impl Default for Gpu {
 
             back_buffer_index: 0,
             front_buffer_index: 1,
-            frame_buffer: [Box::new([0; SCREEN_BYTES_TOTAL]), Box::new([0; SCREEN_BYTES_TOTAL])],
+            frame_buffer: [Box::new(blank_frame), Box::new(blank_frame)],
 
             object_attribute_ram: Box::new([Sprite::default(); 40]),
             video_ram: Box::new([0; 0x2000]),
@@ -217,7 +228,7 @@ impl Gpu {
         self.video_ram[addr as usize] = data;
     }
 
-    pub fn frame_buffer(&self) -> &[u8; SCREEN_BYTES_TOTAL] {
+    pub fn frame_buffer(&self) -> &[u8; SCREEN_BUFFER_SIZE] {
         &self.frame_buffer[self.front_buffer_index]
     }
 
