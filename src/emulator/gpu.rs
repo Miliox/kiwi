@@ -11,6 +11,12 @@ use sprite::Sprite;
 
 use crate::types::*;
 
+const TILE_SIZE: usize = 16;
+const TILE_WIDTH: usize = 8;
+const TILE_HEIGHT: usize = 8;
+const TILE_PER_ROW: usize = 32;
+const TILE_PER_COL: usize = 32;
+
 pub struct Gpu {
     lcdc: LcdControl,
     stat: LcdControlStatus,
@@ -266,6 +272,63 @@ impl Gpu {
         }
     }
 
+    pub fn render_scanline(&mut self) {
+        let tile_map_base_addr: usize = match self.lcdc.contains(
+            LcdControl::BACKGROUND_AND_TILE_MAP_DISPLAY_SELECT) {
+            true => 0x1C00,
+            false => 0x1800,
+        };
+
+        let tile_data_base_addr: usize = match self.lcdc.contains(
+            LcdControl::BACKGROUND_AND_TILE_DATA_DISPLAY_SELECT) {
+            true => 0x0000,
+            false => 0x1000,
+        };
+
+        let y = self.scanline as usize;
+        let tile_y = self.scanline.wrapping_add(self.scroll_y) as usize;
+
+        for x in 0..SCREEN_PIXEL_WIDTH {
+            let tile_x = (x as u8).wrapping_add(self.scroll_x) as usize;
+            let tile_map_offset = (tile_x / TILE_WIDTH) + (tile_y / TILE_HEIGHT) * TILE_PER_ROW;
+
+            let tile_map_addr = tile_map_base_addr + tile_map_offset;
+            let tile_map = self.video_ram[tile_map_addr] as usize;
+
+            let tile_data_addr: usize = if tile_map >= 128 && tile_data_base_addr != 0  {
+                let tile_map = 255 - tile_map + 1;
+                tile_data_base_addr - tile_map * TILE_SIZE
+            } else {
+                tile_data_base_addr + tile_map * TILE_SIZE
+            } + (tile_y % TILE_HEIGHT) * PIXEL_BIT_DEPTH;
+
+            let tile_data_lsb = self.video_ram[tile_data_addr];
+            let tile_data_msb = self.video_ram[tile_data_addr + 1];
+
+            let bit_index = 7 - (tile_x % 8) as u32;
+
+            let palette_index = (tile_data_lsb.wrapping_shr(bit_index) & 1) * 2 +
+                                (tile_data_msb.wrapping_shr(bit_index) & 1);
+
+            let pallete_shift = palette_index as u32 * PIXEL_BIT_DEPTH as u32;
+
+            let palette_mask = 3;
+
+            let palette: u32 = self.background_palette.into();
+
+            let shade_index = (palette.wrapping_shr(pallete_shift) & palette_mask) as usize;
+
+            let pos: usize = (x + y * SCREEN_PIXEL_WIDTH) * ARGB_BYTES_PER_PIXEL;
+            let shade = &SHADE[shade_index];
+            let frame = &mut self.frame_buffer[self.back_buffer_index];
+
+            frame[pos + 0] = shade.a;
+            frame[pos + 1] = shade.r;
+            frame[pos + 2] = shade.g;
+            frame[pos + 3] = shade.b;
+        }
+    }
+
     pub fn step(&mut self, ticks: u64) {
         self.ticks += ticks;
         self.lcdc_status_interrupt_requested = false;
@@ -289,10 +352,15 @@ impl Gpu {
                 if self.ticks >= 456 {
                     self.ticks -= 456;
                     self.increment_scanline();
-    
+
                     if self.scanline > 153 {
                         self.set_mode(LcdControlMode::ScanningOAM);
                         self.reset_scanline();
+
+                        // Swap frame buffers (XOR SWAP)
+                        self.back_buffer_index  ^= self.front_buffer_index;
+                        self.front_buffer_index ^= self.back_buffer_index;
+                        self.back_buffer_index  ^= self.front_buffer_index;
                     }
                 }
             }
@@ -306,12 +374,9 @@ impl Gpu {
                 if self.ticks >= 172 {
                     self.ticks -= 172;
                     self.set_mode(LcdControlMode::HorizontalBlank);
-                    // TODO: Render line
 
-                    // Swap frame buffers
-                    let (front, back) = (self.back_buffer_index, self.front_buffer_index);
-                    self.front_buffer_index = front;
-                    self.back_buffer_index  = back;
+                    // TODO: Render line
+                    self.render_scanline();
                 }
             }
         }

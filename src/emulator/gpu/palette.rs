@@ -20,6 +20,12 @@ impl From<u8> for Palette {
     }
 }
 
+impl Into<u32> for Palette {
+    fn into(self) -> u32 {
+        self.palette as u32
+    }
+}
+
 #[allow(dead_code)]
 impl Palette {
     pub fn palette_color_index(&self, index: u8) -> u8 {
