@@ -306,7 +306,8 @@ impl Gpu {
         let tile_y = self.scanline.wrapping_add(self.scroll_y) as usize;
         let frame_buffer = &mut self.frame_buffer[self.back_buffer_index];
 
-        for x in 0..SCREEN_PIXEL_WIDTH {
+        let mut x = 0;
+        while x < SCREEN_PIXEL_WIDTH {
             let tile_x = (x as u8).wrapping_add(self.scroll_x) as usize;
             let tile_map_offset = (tile_x / TILE_WIDTH) + (tile_y / TILE_HEIGHT) * TILE_PER_ROW;
 
@@ -343,6 +344,8 @@ impl Gpu {
             frame_buffer[pos + 1] = shade.r;
             frame_buffer[pos + 2] = shade.g;
             frame_buffer[pos + 3] = shade.b;
+
+            x += 1;
         }
     }
 
