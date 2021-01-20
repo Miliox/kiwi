@@ -59,112 +59,131 @@ impl Memory for Mmu {
             return DMG_BIOS[addr as usize];
         }
 
-        match addr {
-            0x0000..=0x7FFF => self.cartridge.borrow().read_rom(addr),
-            0x8000..=0x9FFF => self.gpu.borrow().read_video_ram(addr - 0x8000u16),
-            0xC000..=0xDFFF => self.iram[(addr - 0xC000u16) as usize],
-            0xE000..=0xFDFF => self.iram[(addr - 0xE000u16) as usize],
-            0xFE00..=0xFE9F => self.gpu.borrow().read_object_attribute_ram(addr - 0xFE00u16),
-            0xFF80..=0xFFFE => self.hram[(addr - 0xFF80u16) as usize],
+        if addr < 0x8000 {        // 0x0000..=0x7FFF (Cartridge ROM)
+            self.cartridge.borrow().read_rom(addr)
+        } else if addr < 0xA000 { // 0x8000..=0x9FFF (Video RAM)
+            self.gpu.borrow().read_video_ram(addr - 0x8000u16)
+        } else if addr < 0xC000 { // 0xA000..=0xBFFF (Cartridge RAM)
+            self.cartridge.borrow().read_ram(addr - 0xA000u16)
+        } else if addr < 0xE000 { // 0xC000..=0xDFFF (Internal RAM)
+            self.iram[(addr - 0xC000) as usize]
+        } else if addr < 0xE000 { // 0xE000..=0xFDFF (Echo RAM)
+            self.iram[(addr - 0xFE00) as usize]
+        } else if addr < 0xFEA0 { // 0xFE00..=0xFE9F (OAM)
+            self.gpu.borrow().read_object_attribute_ram(addr - 0xFE00u16)
+        } else if addr < 0xFF00 { // 0xFEA0..=0xFEFF (Unusable)
+            0
+        } else if addr < 0xFF80 { // 0xFF00..=0xFF7F (Hardware IO)
+            match addr {
+                // CPU
+                0xFF0F => self.cpu.borrow().interruptions_requested(),
 
-            // Cartridge
-            0xA000..=0xBFFF => self.cartridge.borrow().read_ram(addr - 0xA000u16),
+                // Joypad
+                0xFF00 => self.joypad.borrow().get_p1(),
 
-            // CPU
-            0xFF0F => self.cpu.borrow().interruptions_requested(),
-            0xFFFF => self.cpu.borrow().enabled_interrupts(),
+                // Serial
+                0xFF01 => self.serial.borrow().data(),
+                0xFF02 => self.serial.borrow().control(),
 
-            // Joypad
-            0xFF00 => self.joypad.borrow().get_p1(),
+                // Timer
+                0xFF04 => self.timer.borrow().divider(),
+                0xFF05 => self.timer.borrow().counter(),
+                0xFF06 => self.timer.borrow().modulo(),
+                0xFF07 => self.timer.borrow().control(),
 
-            // Serial
-            0xFF01 => self.serial.borrow().data(),
-            0xFF02 => self.serial.borrow().control(),
+                // GPU
+                0xFF40 => self.gpu.borrow().lcdc(),
+                0xFF41 => self.gpu.borrow().stat(),
+                0xFF42 => self.gpu.borrow().scroll_y(),
+                0xFF43 => self.gpu.borrow().scroll_x(),
+                0xFF44 => self.gpu.borrow().scanline(),
+                0xFF45 => self.gpu.borrow().scanline_compare(),
+                0xFF47 => self.gpu.borrow().background_palette(),
+                0xFF48 => self.gpu.borrow().object_palette_0(),
+                0xFF49 => self.gpu.borrow().object_palette_1(),
+                0xFF4A => self.gpu.borrow().window_y(),
+                0xFF4B => self.gpu.borrow().window_x(),
 
-            // Timer
-            0xFF04 => self.timer.borrow().divider(),
-            0xFF05 => self.timer.borrow().counter(),
-            0xFF06 => self.timer.borrow().modulo(),
-            0xFF07 => self.timer.borrow().control(),
-
-            // GPU
-            0xFF40 => self.gpu.borrow().lcdc(),
-            0xFF41 => self.gpu.borrow().stat(),
-            0xFF42 => self.gpu.borrow().scroll_y(),
-            0xFF43 => self.gpu.borrow().scroll_x(),
-            0xFF44 => self.gpu.borrow().scanline(),
-            0xFF45 => self.gpu.borrow().scanline_compare(),
-            0xFF47 => self.gpu.borrow().background_palette(),
-            0xFF48 => self.gpu.borrow().object_palette_0(),
-            0xFF49 => self.gpu.borrow().object_palette_1(),
-            0xFF4A => self.gpu.borrow().window_y(),
-            0xFF4B => self.gpu.borrow().window_x(),
-
-            _ => 0
+                _ => 0
+            }
+        } else if addr < 0xFFFF { // 0xFF80..=0xFFFE (Zero Page)
+            self.hram[(addr - 0xFF80u16) as usize]
+        } else {
+            self.cpu.borrow().enabled_interrupts()
         }
     }
 
     fn write(&mut self, addr: u16, data: u8) {
-        match addr {
-            0x8000..=0x9FFF => self.gpu.borrow_mut().write_video_ram(addr - 0x8000, data),
-            0xC000..=0xDFFF => self.iram[(addr - 0xC000) as usize] = data,
-            0xE000..=0xFDFF => self.iram[(addr - 0xE000) as usize] = data,
-            0xFE00..=0xFE9F => self.gpu.borrow_mut().write_object_attribute_ram(addr - 0xFE00, data),
-            0xFF80..=0xFFFE => self.hram[(addr - 0xFF80) as usize] = data,
+        if addr < 0x8000 {        // 0x0000..=0x7FFF (Cartridge ROM)
+            // read-only
+        } else if addr < 0xA000 { // 0x8000..=0x9FFF (Video RAM)
+            self.gpu.borrow_mut().write_video_ram(addr - 0x8000, data)
+        } else if addr < 0xC000 { // 0xA000..=0xBFFF (Cartridge RAM)
+            self.cartridge.borrow_mut().write_ram(addr - 0xA000, data)
+        } else if addr < 0xE000 { // 0xC000..=0xDFFF (Internal RAM)
+            self.iram[(addr - 0xC000) as usize] = data
+        } else if addr < 0xE000 { // 0xE000..=0xFDFF (Echo RAM)
+            self.iram[(addr - 0xE000) as usize] = data
+        } else if addr < 0xFEA0 { // 0xFE00..=0xFE9F (OAM)
+            self.gpu.borrow_mut().write_object_attribute_ram(addr - 0xFE00, data)
+        } else if addr < 0xFF00 { // 0xFEA0..=0xFEFF (Unusable)
+            // read-only
+        } else if addr < 0xFF80 { // 0xFF00..=0xFF7F (Hardware IO)
+            match addr {
+                // CPU
+                0xFF0F => self.cpu.borrow_mut().set_interruptions_requested(data),
 
-            // Cartridge
-            0xA000..=0xBFFF => self.cartridge.borrow_mut().write_ram(addr - 0xA000, data),
+                // JOYPAD
+                0xFF00 => { self.joypad.borrow_mut().set_p1(data) }
 
-            // CPU
-            0xFF0F => self.cpu.borrow_mut().set_interruptions_requested(data),
-            0xFFFF => self.cpu.borrow_mut().set_enabled_interrupts(data),
+                // SERIAL
+                0xFF01 => { self.serial.borrow_mut().set_data(data) }
+                0xFF02 => { self.serial.borrow_mut().set_control(data) }
 
-            // JOYPAD
-            0xFF00 => { self.joypad.borrow_mut().set_p1(data) }
+                // TIMER
+                0xFF04 => self.timer.borrow_mut().reset_divider(),
+                0xFF05 => self.timer.borrow_mut().set_counter(data),
+                0xFF06 => self.timer.borrow_mut().set_modulo(data),
+                0xFF07 => self.timer.borrow_mut().set_control(data),
 
-            // SERIAL
-            0xFF01 => { self.serial.borrow_mut().set_data(data) }
-            0xFF02 => { self.serial.borrow_mut().set_control(data) }
+                // GPU
+                0xFF40 => self.gpu.borrow_mut().set_lcdc(data),
+                0xFF41 => self.gpu.borrow_mut().set_stat(data),
+                0xFF42 => self.gpu.borrow_mut().set_scroll_y(data),
+                0xFF43 => self.gpu.borrow_mut().set_scroll_x(data),
+                0xFF45 => self.gpu.borrow_mut().set_scanline_compare(data),
+                0xFF47 => self.gpu.borrow_mut().set_background_palette(data),
+                0xFF48 => self.gpu.borrow_mut().set_object_palette_0(data),
+                0xFF49 => self.gpu.borrow_mut().set_object_palette_1(data),
+                0xFF4A => self.gpu.borrow_mut().set_window_y(data),
+                0xFF4B => self.gpu.borrow_mut().set_window_x(data),
 
-            // TIMER
-            0xFF04 => self.timer.borrow_mut().reset_divider(),
-            0xFF05 => self.timer.borrow_mut().set_counter(data),
-            0xFF06 => self.timer.borrow_mut().set_modulo(data),
-            0xFF07 => self.timer.borrow_mut().set_control(data),
+                // DMA
+                0xFF46 => {
+                    if data <= 0xF1 {
+                        println!("DMA ${:02x}00", data);
 
-            // GPU
-            0xFF40 => self.gpu.borrow_mut().set_lcdc(data),
-            0xFF41 => self.gpu.borrow_mut().set_stat(data),
-            0xFF42 => self.gpu.borrow_mut().set_scroll_y(data),
-            0xFF43 => self.gpu.borrow_mut().set_scroll_x(data),
-            0xFF45 => self.gpu.borrow_mut().set_scanline_compare(data),
-            0xFF47 => self.gpu.borrow_mut().set_background_palette(data),
-            0xFF48 => self.gpu.borrow_mut().set_object_palette_0(data),
-            0xFF49 => self.gpu.borrow_mut().set_object_palette_1(data),
-            0xFF4A => self.gpu.borrow_mut().set_window_y(data),
-            0xFF4B => self.gpu.borrow_mut().set_window_x(data),
-
-            // DMA
-            0xFF46 => {
-                if data <= 0xF1 {
-                    println!("DMA ${:02x}00", data);
-
-                    let addr = u16::from_be_bytes([data, 0x00]);
-                    let mut oam: [u8; 160] = [0; 160];
-                    for i in 0..160 {
-                        oam[i] = self.read(addr + i as u16)
+                        let addr = u16::from_be_bytes([data, 0x00]);
+                        let mut oam: [u8; 160] = [0; 160];
+                        for i in 0..160 {
+                            oam[i] = self.read(addr + i as u16)
+                        }
+                        self.gpu.borrow_mut().populate_object_attribute_ram(&oam);
                     }
-                    self.gpu.borrow_mut().populate_object_attribute_ram(&oam);
                 }
-            }
 
-            // TURN OFF BIOS
-            0xFF50 => {
-                println!("Disabled Bios");
-                self.bios_enable = false;
-            }
+                // TURN OFF BIOS
+                0xFF50 => {
+                    println!("Disabled Bios");
+                    self.bios_enable = false;
+                }
 
-            _ => { }
+                _ => { }
+            }
+        } else if addr < 0xFFFF { // 0xFF80..=0xFFFE (Zero Page)
+            self.hram[(addr - 0xFF80) as usize] = data
+        } else {
+            self.cpu.borrow_mut().set_enabled_interrupts(data)
         }
     }
 }
