@@ -1,5 +1,4 @@
-use crate::types::TICKS_PER_SECOND;
-
+use crate::emulator::engine::TICKS_PER_SECOND;
 const SHIFT_PER_TICKS: u64 = TICKS_PER_SECOND / 8192;
 
 pub struct Serial {

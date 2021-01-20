@@ -1,3 +1,15 @@
+use sdl2::event::Event;
+use sdl2::keyboard::*;
+
+const BUTTON_A: Keycode = Keycode::Space;
+const BUTTON_B: Keycode = Keycode::LShift;
+const BUTTON_UP: Keycode = Keycode::Up;
+const BUTTON_DOWN: Keycode = Keycode::Down;
+const BUTTON_LEFT: Keycode = Keycode::Left;
+const BUTTON_RIGHT: Keycode = Keycode::Right;
+const BUTTON_START: Keycode = Keycode::Return;
+const BUTTON_SELECT: Keycode = Keycode::Backspace;
+
 bitflags! {
     #[derive(Default)]
     pub struct JoypadRegs: u8 {
@@ -46,6 +58,30 @@ impl Joypad {
     pub fn set_p1(&mut self, data: u8) {
         self.regs = JoypadRegs::from_bits(data).unwrap();
         self.update();
+    }
+
+    pub fn process_event(&mut self, event: &sdl2::event::Event) {
+        match event {
+            Event::KeyDown { keycode: Some(BUTTON_A), ..}      => { self.press_a(); }
+            Event::KeyDown { keycode: Some(BUTTON_B), ..}      => { self.press_b(); }
+            Event::KeyDown { keycode: Some(BUTTON_UP), .. }    => { self.press_up(); }
+            Event::KeyDown { keycode: Some(BUTTON_DOWN), .. }  => { self.press_down(); }
+            Event::KeyDown { keycode: Some(BUTTON_LEFT), .. }  => { self.press_left(); }
+            Event::KeyDown { keycode: Some(BUTTON_RIGHT), .. } => { self.press_right(); }
+            Event::KeyDown { keycode: Some(BUTTON_START), ..}  => { self.press_start(); }
+            Event::KeyDown { keycode: Some(BUTTON_SELECT), ..} => { self.press_select(); }
+
+            Event::KeyUp { keycode: Some(BUTTON_A), ..}      => { self.release_a(); }
+            Event::KeyUp { keycode: Some(BUTTON_B), ..}      => { self.release_b(); }
+            Event::KeyUp { keycode: Some(BUTTON_UP), .. }    => { self.release_up(); }
+            Event::KeyUp { keycode: Some(BUTTON_DOWN), .. }  => { self.release_down(); }
+            Event::KeyUp { keycode: Some(BUTTON_LEFT), .. }  => { self.release_left(); }
+            Event::KeyUp { keycode: Some(BUTTON_RIGHT), .. } => { self.release_right(); }
+            Event::KeyUp { keycode: Some(BUTTON_START), ..}  => { self.release_start(); }
+            Event::KeyUp { keycode: Some(BUTTON_SELECT), ..} => { self.release_select(); }
+
+            _ => { }
+        }
     }
 
     pub fn update(&mut self) {

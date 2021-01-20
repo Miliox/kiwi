@@ -1,13 +1,21 @@
+use sdl2::render::Texture;
+
+use crate::emulator::bios::DMG_BIOS;
 use crate::emulator::cpu::alu::Alu;
 use crate::emulator::cpu::asm::*;
-use crate::emulator::bios::DMG_BIOS;
 use crate::emulator::cpu::regs::Regs;
 use crate::emulator::cpu::interrupts::Interrupts;
+use crate::emulator::cpu::Processor;
 use crate::emulator::cartridge::Cartridge;
 use crate::emulator::gpu::Gpu;
+use crate::emulator::gpu::SCREEN_BUFFER_WIDTH;
 use crate::emulator::joypad::Joypad;
+use crate::emulator::mmu::Memory;
 use crate::emulator::serial::Serial;
 use crate::emulator::timer::Timer;
+
+pub const TICKS_PER_SECOND: u64 = 4_194_304;
+pub const TICKS_PER_FRAME:  u64 = TICKS_PER_SECOND / 60;
 
 pub struct Engine {
     // Arithmetic Logic Unit
@@ -71,50 +79,55 @@ pub struct Engine {
     interruptions_requested: Interrupts,
 }
 
-pub trait Processor {
-    // Execute the next instruction
-    fn fetch_decode_execute_store_cycle(&mut self) -> u64;
+impl Engine {
+    pub fn open_rom_file(&mut self, filename: &str) {
+        self.cartridge.open(filename);
+    }
 
-    // Routine to check and handle interruption from software and hardware
-    fn interrupt_service_routine(&mut self) -> bool;
+    pub fn blit_frame_to_texture(&mut self, texture: &mut Texture) {
+        texture.update(None, self.ppu.frame_buffer(), SCREEN_BUFFER_WIDTH).unwrap();
+    }
 
-    // Jump to target address
-    fn jump_absolute(&mut self, target: u16);
+    pub fn process_event(&mut self, event: &sdl2::event::Event) {
+        self.joypad.process_event(event);
+    }
 
-    // Jump to target address if condition is true
-    fn jump_absolute_if(&mut self, target: u16, cond: bool);
+    pub fn run_next_step(&mut self) -> u64 {
+        let ticks = self.fetch_decode_execute_store_cycle();
 
-    // Jump relative to offset
-    fn jump_relative(&mut self, offset: u8);
+        self.serial.step(ticks);
+        if self.serial.transfering_completion_interruption_requested() {
+            self.interruptions_requested.set_serial_transfer_complete();
+        }
 
-    // Jump relative to offset if condition is true
-    fn jump_relative_if(&mut self, offset: u8, cond: bool);
+        self.timer.step(ticks);
+        if self.timer.overflow_interrupt_requested() {
+            self.interruptions_requested.set_timer_overflow();
+        }
 
-    // Begin subroutine
-    fn subroutine_call(&mut self, routine_addr: u16);
+        self.ppu.step(ticks);
+        if self.ppu.lcdc_status_interrupt_requested() {
+            self.interruptions_requested.set_lcdc_status();
+        }
+        if self.ppu.vertical_blank_interrupt_requested() {
+            self.interruptions_requested.set_vertical_blank();
+        }
 
-    // Begin subroutine if condition is true
-    fn subroutine_call_if(&mut self, routine_addr: u16, cond: bool);
+        if self.joypad.interruption_requested() {
+            self.joypad.reset_interruption_requested();
+            self.interruptions_requested.set_high_to_low_pin10_to_pin_13();
+        }
 
-    // Return from subroutine
-    fn subroutine_return(&mut self);
+        ticks
+    }
 
-    // Return from subroutine if condition is true
-    fn subroutine_return_if(&mut self, cond: bool);
-
-    // Insert data into the stack
-    fn stack_push(&mut self, data: u16);
-
-    // Retrive data from stack
-    fn stack_pop(&mut self) -> u16;
-}
-
-pub trait Memory {
-    // Read a single byte from memory
-    fn read(&self, addr: u16) -> u8;
-
-    // Write a single byte to memory
-    fn write(&mut self, addr: u16, data: u8);
+    pub fn run_next_frame(&mut self, ticks_counter: u64) -> u64 {
+        let mut ticks_counter = ticks_counter;
+        while ticks_counter < TICKS_PER_FRAME {
+            ticks_counter += self.run_next_step();
+        }
+        ticks_counter - TICKS_PER_FRAME
+    }
 }
 
 impl Default for Engine {

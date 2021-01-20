@@ -9,13 +9,30 @@ use lcd_control_status::LcdControlMode;
 use palette::Palette;
 use sprite::Sprite;
 
-use crate::types::*;
+use sdl2::pixels::Color;
 
-const TILE_SIZE: usize = 16;
-const TILE_WIDTH: usize = 8;
-const TILE_HEIGHT: usize = 8;
-const TILE_PER_ROW: usize = 32;
-const TILE_PER_COL: usize = 32;
+pub const SCREEN_PIXEL_WIDTH:  usize = 160;
+pub const SCREEN_PIXEL_HEIGHT: usize = 144;
+pub const SCREEN_PIXEL_SIZE: usize  = SCREEN_PIXEL_HEIGHT * SCREEN_PIXEL_WIDTH;
+
+pub const PIXEL_BIT_DEPTH: usize = 2;
+pub const ARGB_BYTES_PER_PIXEL: usize = 4;
+pub const SCREEN_BUFFER_SIZE: usize = SCREEN_PIXEL_SIZE * ARGB_BYTES_PER_PIXEL;
+pub const SCREEN_BUFFER_WIDTH: usize = SCREEN_PIXEL_WIDTH * ARGB_BYTES_PER_PIXEL;
+
+pub const SHADE_0: Color = Color::RGB(0x9B, 0xBC, 0x0F); // Light
+pub const SHADE_1: Color = Color::RGB(0x8B, 0xAC, 0x0F); // Light Gray
+pub const SHADE_2: Color = Color::RGB(0x30, 0x62, 0x30); // Dark Gray
+pub const SHADE_3: Color = Color::RGB(0x0F, 0x38, 0x0F); // Dark
+pub const SHADE: [Color; 4] = [SHADE_0, SHADE_1, SHADE_2, SHADE_3];
+
+pub const TILE_SIZE: usize = 16;
+pub const TILE_WIDTH: usize = 8;
+pub const TILE_HEIGHT: usize = 8;
+pub const TILE_PER_ROW: usize = 32;
+
+#[allow(dead_code)]
+pub const TILE_PER_COL: usize = 32;
 
 pub struct Gpu {
     lcdc: LcdControl,
