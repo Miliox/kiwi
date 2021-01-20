@@ -287,6 +287,7 @@ impl Gpu {
 
         let y = self.scanline as usize;
         let tile_y = self.scanline.wrapping_add(self.scroll_y) as usize;
+        let frame_buffer = &mut self.frame_buffer[self.back_buffer_index];
 
         for x in 0..SCREEN_PIXEL_WIDTH {
             let tile_x = (x as u8).wrapping_add(self.scroll_x) as usize;
@@ -319,13 +320,12 @@ impl Gpu {
             let shade_index = (palette.wrapping_shr(pallete_shift) & palette_mask) as usize;
 
             let pos: usize = (x + y * SCREEN_PIXEL_WIDTH) * ARGB_BYTES_PER_PIXEL;
-            let shade = &SHADE[shade_index];
-            let frame = &mut self.frame_buffer[self.back_buffer_index];
 
-            frame[pos + 0] = shade.a;
-            frame[pos + 1] = shade.r;
-            frame[pos + 2] = shade.g;
-            frame[pos + 3] = shade.b;
+            let shade = &SHADE[shade_index];
+            frame_buffer[pos + 0] = shade.a;
+            frame_buffer[pos + 1] = shade.r;
+            frame_buffer[pos + 2] = shade.g;
+            frame_buffer[pos + 3] = shade.b;
         }
     }
 
