@@ -34,7 +34,7 @@ pub const TILE_PER_ROW: usize = 32;
 #[allow(dead_code)]
 pub const TILE_PER_COL: usize = 32;
 
-pub struct Gpu {
+pub struct Ppu {
     lcdc: LcdControl,
     stat: LcdControlStatus,
 
@@ -64,7 +64,7 @@ pub struct Gpu {
     video_ram: Box<[u8; 0x2000]>,
 }
 
-impl Default for Gpu {
+impl Default for Ppu {
     fn default() -> Self {
         let mut blank_frame: [u8; SCREEN_BUFFER_SIZE] = [0; SCREEN_BUFFER_SIZE];
         for index in 0..blank_frame.len() {
@@ -109,7 +109,7 @@ impl Default for Gpu {
 }
 
 #[allow(dead_code)]
-impl Gpu {
+impl Ppu {
     pub fn lcdc(&self) -> u8 {
         self.lcdc.into()
     }

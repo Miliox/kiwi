@@ -2,7 +2,7 @@ mod bios;
 mod cartridge;
 pub mod cpu;
 pub mod engine;
-pub mod gpu;
+pub mod ppu;
 pub mod joypad;
 pub mod mmu;
 pub mod serial;

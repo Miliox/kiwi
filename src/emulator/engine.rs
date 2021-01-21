@@ -7,8 +7,8 @@ use crate::emulator::cpu::regs::Regs;
 use crate::emulator::cpu::interrupts::Interrupts;
 use crate::emulator::cpu::Processor;
 use crate::emulator::cartridge::Cartridge;
-use crate::emulator::gpu::Gpu;
-use crate::emulator::gpu::SCREEN_BUFFER_WIDTH;
+use crate::emulator::ppu::Ppu;
+use crate::emulator::ppu::SCREEN_BUFFER_WIDTH;
 use crate::emulator::joypad::Joypad;
 use crate::emulator::mmu::Memory;
 use crate::emulator::serial::Serial;
@@ -56,7 +56,7 @@ pub struct Engine {
     // - $8000..=$9FFF (Video RAM)
     // - $FE00..=$FE9F (Object Attribute Memory)
     // - $FF40..=$FF4B (Hardware IO)
-    ppu: Box<Gpu>,
+    ppu: Box<Ppu>,
 
     // Joypad
     // - $FF00 (Hardware IO)
@@ -144,7 +144,7 @@ impl Default for Engine {
             bios: Box::new(DMG_BIOS),
             ram: Box::new([0; 0x2000 + 127]),
             cartridge: Box::new(Cartridge::default()),
-            ppu: Box::new(Gpu::default()),
+            ppu: Box::new(Ppu::default()),
             joypad: Box::new(Joypad::default()),
             serial: Box::new(Serial::default()),
             timer: Box::new(Timer::default()),
