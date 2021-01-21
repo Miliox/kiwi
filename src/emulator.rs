@@ -6,6 +6,7 @@ pub mod ppu;
 pub mod joypad;
 pub mod mmu;
 pub mod serial;
+pub mod sound;
 pub mod timer;
 
 use engine::Engine;

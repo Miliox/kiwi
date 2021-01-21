@@ -5,8 +5,8 @@ extern crate sdl2;
 mod emulator;
 
 use emulator::Emulator;
-use emulator::gpu::SCREEN_PIXEL_WIDTH;
-use emulator::gpu::SCREEN_PIXEL_HEIGHT;
+use emulator::ppu::SCREEN_PIXEL_WIDTH;
+use emulator::ppu::SCREEN_PIXEL_HEIGHT;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
