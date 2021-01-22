@@ -446,10 +446,17 @@ bitflags! {
     /// It blocks use on the GBA for a different reason: the developer couldn't figure out
     /// how to silence buzzing associated with the wave channel's DAC.
     pub struct MasterVolumeControl: u8 {
-        const LEFT_CHANNEL_ENABLE       = 0b1000_0000;
-        const LEFT_CHANNEL_VOLUME_MASK  = 0b0111_0000;
-        const RIGHT_CHANNEL_ENABLE      = 0b0000_1000;
+        const LEFT_CHANNEL_5_ENABLE    = 0b1000_0000;
+        const LEFT_CHANNEL_VOLUME_MASK = 0b0111_0000;
+        const LEFT_CHANNEL_VOLUME_BIT2 = 0b0100_0000;
+        const LEFT_CHANNEL_VOLUME_BIT1 = 0b0010_0000;
+        const LEFT_CHANNEL_VOLUME_BIT0 = 0b0001_0000;
+
+        const RIGHT_CHANNEL_5_ENABLE    = 0b0000_1000;
         const RIGHT_CHANNEL_VOLUME_MASK = 0b0000_0111;
+        const RIGHT_CHANNEL_VOLUME_BIT2 = 0b0000_0100;
+        const RIGHT_CHANNEL_VOLUME_BIT1 = 0b0000_0010;
+        const RIGHT_CHANNEL_VOLUME_BIT0 = 0b0000_0001;
     }
 }
 
@@ -479,11 +486,11 @@ bitflags! {
 
 bitflags! {
     /// FF26 - NR52 - Sound on/off
-    /// Bit 7 - All sound on/off  (0: stop all sound circuits) (Read/Write)
-    /// Bit 3 - Sound 4 ON flag (Read Only)
-    /// Bit 2 - Sound 3 ON flag (Read Only)
-    /// Bit 1 - Sound 2 ON flag (Read Only)
-    /// Bit 0 - Sound 1 ON flag (Read Only)
+    /// - Bit 7 - All sound on/off  (0: stop all sound circuits) (Read/Write)
+    /// - Bit 3 - Sound 4 ON flag (Read Only)
+    /// - Bit 2 - Sound 3 ON flag (Read Only)
+    /// - Bit 1 - Sound 2 ON flag (Read Only)
+    /// - Bit 0 - Sound 1 ON flag (Read Only)
     ///
     /// If your GB programs don't use sound then write 00h to this register
     /// to save 16% or more on GB power consumption. Disabeling the sound

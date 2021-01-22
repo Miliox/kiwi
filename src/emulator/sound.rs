@@ -57,9 +57,15 @@ use flags::*;
 #[allow(dead_code)]
 #[derive(Default)]
 pub struct SquareChannel {
+    left_enable: bool,
+    right_enable: bool,
+
     playing: bool,
+    restart: bool,
     repeat: bool,
+
     frequency: u32,
+    fparam: u32,
 
     envelope_add_mode: bool,
     envelope_start_volume: u8,
@@ -69,8 +75,8 @@ pub struct SquareChannel {
     sweep_period: u8,
     sweep_shift: u8,
 
-    wave_pattern_duty: u8,
-    wave_length_load: u8,
+    wave_duty: u8,
+    wave_length: u8,
 }
 
 //         Wave
@@ -82,9 +88,12 @@ pub struct SquareChannel {
 #[allow(dead_code)]
 #[derive(Default)]
 pub struct WaveChannel {
+    left_enable: bool,
+    right_enable: bool,
+
     playing: bool,
     repeat: bool,
-    frequency: u32,
+    frequency: u16,
 
     wave_length_load: u8,
     wave_volume: u8,
@@ -99,6 +108,9 @@ pub struct WaveChannel {
 #[allow(dead_code)]
 #[derive(Default)]
 pub struct NoiseChannel {
+    left_enable: bool,
+    right_enable: bool,
+
     playing: bool,
     repeat: bool,
 
@@ -114,21 +126,13 @@ pub struct NoiseChannel {
 #[allow(dead_code)]
 #[derive(Default)]
 pub struct Sounder {
+    enable: bool,
+
     // SO2
-    left_speaker_volume: u8,
-    left_speaker_master_enable: bool,
-    left_speaker_channel1_enable: bool,
-    left_speaker_channel2_enable: bool,
-    left_speaker_channel3_enable: bool,
-    left_speaker_channel4_enable: bool,
+    left_volume: u8,
 
     // SO1
-    right_speaker_volume: u8,
-    right_speaker_master_enable: bool,
-    right_speaker_channel1_enable: bool,
-    right_speaker_channel2_enable: bool,
-    right_speaker_channel3_enable: bool,
-    right_speaker_channel4_enable: bool,
+    right_volume: u8,
 
     // TONE & SWEEP
     channel1: SquareChannel,
@@ -149,8 +153,14 @@ impl Sounder {
     }
 
     pub fn set_channel1_r0(&mut self, data: u8) {
-        let _r = Channel1SweepControl::from_bits(data);
-        println!("NR10 {:?}", _r);
+        let r = Channel1SweepControl::from_bits(data).unwrap();
+        self.channel1.sweep_inverse = r.contains(Channel1SweepControl::SWEEP_DIRECTION_SELECT);
+        self.channel1.sweep_period = (r & Channel1SweepControl::SWEEP_PERIOD_MASK).bits() >> 4;
+        self.channel1.sweep_shift = (r & Channel1SweepControl::SWEEP_SHIFT_MASK).bits();
+        println!("NR10 ch1_sweep_inv={} ch1_sweep_period={} ch1_sweep_shift={}",
+            self.channel1.sweep_inverse,
+            self.channel1.sweep_period,
+            self.channel1.sweep_shift);
     }
 
     pub fn channel1_r1(&self) -> u8 {
@@ -158,8 +168,10 @@ impl Sounder {
     }
 
     pub fn set_channel1_r1(&mut self, data: u8) {
-        let _r = Channel1SequenceControl::from_bits(data);
-        println!("NR11 {:?}", _r);
+        let r = Channel1SequenceControl::from_bits(data).unwrap();
+        self.channel1.wave_duty = (r & Channel1SequenceControl::SOUND_SEQUENCE_DUTY_MASK).bits() >> 6;
+        self.channel1.wave_length = (r & Channel1SequenceControl::SOUND_SEQUENCE_LENGTH_MASK).bits();
+        println!("NR11 ch1_duty={} ch1_len={}", self.channel1.wave_duty, self.channel1.wave_length);
     }
 
     pub fn channel1_r2(&self) -> u8 {
@@ -167,8 +179,14 @@ impl Sounder {
     }
 
     pub fn set_channel1_r2(&mut self, data: u8) {
-        let _r = Channel1EnvelopeControl::from_bits(data);
-        println!("NR12 {:?}", _r);
+        let r = Channel1EnvelopeControl::from_bits(data).unwrap();
+        self.channel1.envelope_start_volume = (r & Channel1EnvelopeControl::ENVELOPE_INITIAL_VOLUME_MASK).bits() >> 4;
+        self.channel1.envelope_add_mode = r.contains(Channel1EnvelopeControl::ENVELOPE_DIRECTION_SELECT);
+        self.channel1.envelope_sweep_number = (r & Channel1EnvelopeControl::ENVELOPE_SWEEP_NUMBER_MASK).bits();
+        println!("NR12 ch1_env_start_vol={} ch1_env_add_mode={} ch1_env_num={}",
+            self.channel1.envelope_start_volume,
+            self.channel1.envelope_add_mode,
+            self.channel1.envelope_sweep_number);
     }
 
     pub fn channel1_r3(&self) -> u8 {
@@ -176,8 +194,9 @@ impl Sounder {
     }
 
     pub fn set_channel1_r3(&mut self, data: u8) {
-        let _r = Channel1FrequencyLowerData::from_bits(data);
-        println!("NR13 {:?}", _r);
+        self.channel1.fparam = (self.channel1.fparam & 0x300) | data as u32;
+        self.channel1.frequency = Self::calculate_frequency(self.channel1.fparam);
+        println!("NR13 ch1_fparam={} ch1_freq={}", self.channel1.fparam, self.channel1.frequency);
     }
 
     pub fn channel1_r4(&self) -> u8 {
@@ -185,8 +204,15 @@ impl Sounder {
     }
 
     pub fn set_channel1_r4(&mut self, data: u8) {
-        let _r = Channel1FrequencyHigherData::from_bits(data);
-        println!("NR14 {:?}", _r);
+        let r = Channel1FrequencyHigherData::from_bits(data).unwrap();
+        self.channel1.fparam = (self.channel1.fparam & 0xFF) | (data as u32 & 0x3) << 8;
+        self.channel1.repeat = !r.contains(Channel1FrequencyHigherData::STOP_ON_SEQUENCE_COMPLETE);
+        self.channel1.restart = r.contains(Channel1FrequencyHigherData::RESTART_SEQUENCE);
+        println!("NR14 ch1_fparam={} ch1_freq={} ch1_repeat={} ch1_restart={}",
+            self.channel1.fparam,
+            self.channel1.frequency,
+            self.channel1.repeat,
+            self.channel1.restart);
     }
 
     pub fn channel2_r1(&self) -> u8 {
@@ -319,8 +345,12 @@ impl Sounder {
     }
 
     pub fn set_master_r0(&mut self, data: u8) {
-        let _r = MasterVolumeControl::from_bits(data);
-        println!("NR50 {:?}", _r);
+        let r = MasterVolumeControl::from_bits(data).unwrap();
+
+        self.left_volume = (r & MasterVolumeControl::LEFT_CHANNEL_VOLUME_MASK).bits() >> 4;
+        self.right_volume = (r & MasterVolumeControl::RIGHT_CHANNEL_VOLUME_MASK).bits() >> 0;
+
+        println!("NR50 volume=({}, {})", self.left_volume, self.right_volume);
     }
 
     pub fn master_r1(&self) -> u8 {
@@ -328,8 +358,23 @@ impl Sounder {
     }
 
     pub fn set_master_r1(&mut self, data: u8) {
-        let _r = MasterOutputControl::from_bits(data);
-        println!("NR51 {:?}", _r);
+        let r = MasterOutputControl::from_bits(data).unwrap();
+
+        self.channel4.left_enable = r.contains(MasterOutputControl::LEFT_CHANNEL_4_ENABLE);
+        self.channel3.left_enable = r.contains(MasterOutputControl::LEFT_CHANNEL_3_ENABLE);
+        self.channel2.left_enable = r.contains(MasterOutputControl::LEFT_CHANNEL_2_ENABLE);
+        self.channel1.left_enable = r.contains(MasterOutputControl::LEFT_CHANNEL_1_ENABLE);
+
+        self.channel4.right_enable = r.contains(MasterOutputControl::RIGHT_CHANNEL_4_ENABLE);
+        self.channel3.right_enable = r.contains(MasterOutputControl::RIGHT_CHANNEL_3_ENABLE);
+        self.channel2.right_enable = r.contains(MasterOutputControl::RIGHT_CHANNEL_2_ENABLE);
+        self.channel1.right_enable = r.contains(MasterOutputControl::RIGHT_CHANNEL_1_ENABLE);
+
+        println!("NR51 ch1_on=({}, {}) ch2_on=({}, {}) ch3_on=({}, {}) ch4_on=({}, {}))",
+            self.channel1.left_enable, self.channel1.right_enable,
+            self.channel2.left_enable, self.channel2.right_enable,
+            self.channel3.left_enable, self.channel3.right_enable,
+            self.channel4.left_enable, self.channel4.right_enable);
     }
 
     pub fn master_r2(&self) -> u8 {
@@ -337,7 +382,12 @@ impl Sounder {
     }
 
     pub fn set_master_r2(&mut self, data: u8) {
-        let _r = MasterOnOffControl::from_bits(data);
-        println!("NR52 {:?}", _r);
+        let r = MasterOnOffControl::from_bits(data).unwrap();
+        self.enable = r.contains(MasterOnOffControl::CHANNEL_ALL_ENABLE);
+        println!("NR52 sound_on={}", self.enable);
+    }
+
+    fn calculate_frequency(f: u32) -> u32 {
+        131_072 / (2048 - f)
     }
 }
