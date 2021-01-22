@@ -149,7 +149,8 @@ impl Sounder {
     }
 
     pub fn set_channel1_r0(&mut self, data: u8) {
-        let _ = Channel1SweepControl::from_bits(data);
+        let _r = Channel1SweepControl::from_bits(data);
+        println!("NR10 {:?}", _r);
     }
 
     pub fn channel1_r1(&self) -> u8 {
@@ -157,7 +158,8 @@ impl Sounder {
     }
 
     pub fn set_channel1_r1(&mut self, data: u8) {
-        let _ = Channel1SequenceControl::from_bits(data);
+        let _r = Channel1SequenceControl::from_bits(data);
+        println!("NR11 {:?}", _r);
     }
 
     pub fn channel1_r2(&self) -> u8 {
@@ -165,7 +167,8 @@ impl Sounder {
     }
 
     pub fn set_channel1_r2(&mut self, data: u8) {
-        let _ = Channel1EnvelopeControl::from_bits(data);
+        let _r = Channel1EnvelopeControl::from_bits(data);
+        println!("NR12 {:?}", _r);
     }
 
     pub fn channel1_r3(&self) -> u8 {
@@ -173,7 +176,8 @@ impl Sounder {
     }
 
     pub fn set_channel1_r3(&mut self, data: u8) {
-        let _ = Channel1FrequencyLowerData::from_bits(data);
+        let _r = Channel1FrequencyLowerData::from_bits(data);
+        println!("NR13 {:?}", _r);
     }
 
     pub fn channel1_r4(&self) -> u8 {
@@ -181,7 +185,8 @@ impl Sounder {
     }
 
     pub fn set_channel1_r4(&mut self, data: u8) {
-        let _ = Channel1FrequencyHigherData::from_bits(data);
+        let _r = Channel1FrequencyHigherData::from_bits(data);
+        println!("NR14 {:?}", _r);
     }
 
     pub fn channel2_r1(&self) -> u8 {
@@ -189,7 +194,8 @@ impl Sounder {
     }
 
     pub fn set_channel2_r1(&mut self, data: u8) {
-        let _ = Channel2SequenceControl::from_bits(data);
+        let _r = Channel2SequenceControl::from_bits(data);
+        println!("NR21 {:?}", _r);
     }
 
     pub fn channel2_r2(&self) -> u8 {
@@ -197,7 +203,8 @@ impl Sounder {
     }
 
     pub fn set_channel2_r2(&mut self, data: u8) {
-        let _ = Channel2EnvelopeControl::from_bits(data);
+        let _r = Channel2EnvelopeControl::from_bits(data);
+        println!("NR22 {:?}", _r);
     }
 
     pub fn channel2_r3(&self) -> u8 {
@@ -205,7 +212,8 @@ impl Sounder {
     }
 
     pub fn set_channel2_r3(&mut self, data: u8) {
-        let _ = Channel2FrequencyLowerData::from_bits(data);
+        let _r = Channel2FrequencyLowerData::from_bits(data);
+        println!("NR23 {:?}", _r);
     }
 
     pub fn channel2_r4(&self) -> u8 {
@@ -213,7 +221,8 @@ impl Sounder {
     }
 
     pub fn set_channel2_r4(&mut self, data: u8) {
-        let _ = Channel2FrequencyHigherData::from_bits(data);
+        let _r = Channel2FrequencyHigherData::from_bits(data);
+        println!("NR24 {:?}", _r);
     }
 
     pub fn channel3_r0(&self) -> u8 {
@@ -221,7 +230,8 @@ impl Sounder {
     }
 
     pub fn set_channel3_r0(&mut self, data: u8) {
-        let _ = Channel3SoundOnOffStatus::from_bits(data);
+        let _r = Channel3SoundOnOffStatus::from_bits(data);
+        println!("NR30 {:?}", _r);
     }
 
     pub fn channel3_r1(&self) -> u8 {
@@ -229,7 +239,8 @@ impl Sounder {
     }
 
     pub fn set_channel3_r1(&mut self, data: u8) {
-        let _ = Channel3SoundSequenceLength::from_bits(data);
+        let _r = Channel3SoundSequenceLength::from_bits(data);
+        println!("NR31 {:?}", _r);
     }
 
     pub fn channel3_r2(&self) -> u8 {
@@ -237,7 +248,8 @@ impl Sounder {
     }
 
     pub fn set_channel3_r2(&mut self, data: u8) {
-        let _ = Channel3VolumeSelection::from_bits(data);
+        let _r = Channel3VolumeSelection::from_bits(data);
+        println!("NR32 {:?}", _r);
     }
 
     pub fn channel3_r3(&self) -> u8 {
@@ -245,7 +257,8 @@ impl Sounder {
     }
 
     pub fn set_channel3_r3(&mut self, data: u8) {
-        let _ = Channel3FrequencyLowerData::from_bits(data);
+        let _r = Channel3FrequencyLowerData::from_bits(data);
+        println!("NR33 {:?}", _r);
     }
 
     pub fn channel3_r4(&self) -> u8 {
@@ -253,7 +266,8 @@ impl Sounder {
     }
 
     pub fn set_channel3_r4(&mut self, data: u8) {
-        let _ = Channel3FrequencyHigherData::from_bits(data);
+        let _r = Channel3FrequencyHigherData::from_bits(data);
+        println!("NR34 {:?}", _r);
     }
 
     pub fn channel3_sample(&self, index: u8) -> u8 {
@@ -269,7 +283,8 @@ impl Sounder {
     }
 
     pub fn set_channel4_r1(&mut self, data: u8) {
-        let _ = Channel4SoundSequenceLength::from_bits(data);
+        let _r = Channel4SoundSequenceLength::from_bits(data);
+        println!("NR41 {:?}", _r);
     }
 
     pub fn channel4_r2(&self) -> u8 {
@@ -277,7 +292,8 @@ impl Sounder {
     }
 
     pub fn set_channel4_r2(&mut self, data: u8) {
-        let _ = Channel4EnvelopeControl::from_bits(data);
+        let _r = Channel4EnvelopeControl::from_bits(data);
+        println!("NR42 {:?}", _r);
     }
 
     pub fn channel4_r3(&self) -> u8 {
@@ -285,7 +301,8 @@ impl Sounder {
     }
 
     pub fn set_channel4_r3(&mut self, data: u8) {
-        let _ = Channel4PolynomialCounterParameterControl::from_bits(data);
+        let _r = Channel4PolynomialCounterParameterControl::from_bits(data);
+        println!("NR43 {:?}", _r);
     }
 
     pub fn channel4_r4(&self) -> u8 {
@@ -293,7 +310,8 @@ impl Sounder {
     }
 
     pub fn set_channel4_r4(&mut self, data: u8) {
-        let _ = Channel4PolynomialCounterSequenceControl::from_bits(data);
+        let _r = Channel4PolynomialCounterSequenceControl::from_bits(data);
+        println!("NR44 {:?}", _r);
     }
 
     pub fn master_r0(&self) -> u8 {
@@ -301,7 +319,8 @@ impl Sounder {
     }
 
     pub fn set_master_r0(&mut self, data: u8) {
-        let _ = MasterVolumeControl::from_bits(data);
+        let _r = MasterVolumeControl::from_bits(data);
+        println!("NR50 {:?}", _r);
     }
 
     pub fn master_r1(&self) -> u8 {
@@ -309,7 +328,8 @@ impl Sounder {
     }
 
     pub fn set_master_r1(&mut self, data: u8) {
-        let _ = MasterOutputControl::from_bits(data);
+        let _r = MasterOutputControl::from_bits(data);
+        println!("NR51 {:?}", _r);
     }
 
     pub fn master_r2(&self) -> u8 {
@@ -317,6 +337,7 @@ impl Sounder {
     }
 
     pub fn set_master_r2(&mut self, data: u8) {
-        let _ = MasterOnOffControl::from_bits(data);
+        let _r = MasterOnOffControl::from_bits(data);
+        println!("NR52 {:?}", _r);
     }
 }
