@@ -53,6 +53,7 @@ pub mod flags;
 // NR13 FF13 FFFF FFFF Frequency LSB
 // NR14 FF14 TL-- -FFF Trigger, Length enable, Frequency MSB
 #[allow(dead_code)]
+#[derive(Default)]
 pub struct SquareChannel {
     playing: bool,
     repeat: bool,
@@ -77,6 +78,7 @@ pub struct SquareChannel {
 // NR33 FF1D FFFF FFFF Frequency LSB
 // NR34 FF1E TL-- -FFF Trigger, Length enable, Frequency MSB
 #[allow(dead_code)]
+#[derive(Default)]
 pub struct WaveChannel {
     playing: bool,
     repeat: bool,
@@ -93,6 +95,7 @@ pub struct WaveChannel {
 // NR43 FF22 SSSS WDDD Clock shift, Width mode of LFSR, Divisor code
 // NR44 FF23 TL-- ---- Trigger, Length enable
 #[allow(dead_code)]
+#[derive(Default)]
 pub struct NoiseChannel {
     playing: bool,
     repeat: bool,
@@ -107,6 +110,7 @@ pub struct NoiseChannel {
 }
 
 #[allow(dead_code)]
+#[derive(Default)]
 pub struct Sounder {
     // SO2
     left_speaker_volume: u8,
@@ -135,4 +139,182 @@ pub struct Sounder {
 
     // NOISE
     channel4: NoiseChannel,
+}
+
+impl Sounder {
+    pub fn channel1_r0(&self) -> u8 {
+        0
+    }
+
+    pub fn set_channel1_r0(&mut self, data: u8) {
+
+    }
+
+    pub fn channel1_r1(&self) -> u8 {
+        0
+    }
+
+    pub fn set_channel1_r1(&mut self, data: u8) {
+
+    }
+
+    pub fn channel1_r2(&self) -> u8 {
+        0
+    }
+
+    pub fn set_channel1_r2(&mut self, data: u8) {
+
+    }
+
+    pub fn channel1_r3(&self) -> u8 {
+        0
+    }
+
+    pub fn set_channel1_r3(&mut self, data: u8) {
+
+    }
+
+    pub fn channel1_r4(&self) -> u8 {
+        0
+    }
+
+    pub fn set_channel1_r4(&mut self, data: u8) {
+
+    }
+
+    pub fn channel2_r1(&self) -> u8 {
+        0
+    }
+
+    pub fn set_channel2_r1(&mut self, data: u8) {
+
+    }
+
+    pub fn channel2_r2(&self) -> u8 {
+        0
+    }
+
+    pub fn set_channel2_r2(&mut self, data: u8) {
+
+    }
+
+    pub fn channel2_r3(&self) -> u8 {
+        0
+    }
+
+    pub fn set_channel2_r3(&mut self, data: u8) {
+
+    }
+
+    pub fn channel2_r4(&self) -> u8 {
+        0
+    }
+
+    pub fn set_channel2_r4(&mut self, data: u8) {
+
+    }
+
+    pub fn channel3_r0(&self) -> u8 {
+        0
+    }
+
+    pub fn set_channel3_r0(&mut self, data: u8) {
+
+    }
+
+    pub fn channel3_r1(&self) -> u8 {
+        0
+    }
+
+    pub fn set_channel3_r1(&mut self, data: u8) {
+
+    }
+
+    pub fn channel3_r2(&self) -> u8 {
+        0
+    }
+
+    pub fn set_channel3_r2(&mut self, data: u8) {
+
+    }
+
+    pub fn channel3_r3(&self) -> u8 {
+        0
+    }
+
+    pub fn set_channel3_r3(&mut self, data: u8) {
+
+    }
+
+    pub fn channel3_r4(&self) -> u8 {
+        0
+    }
+
+    pub fn set_channel3_r4(&mut self, data: u8) {
+
+    }
+
+    pub fn channel3_sample(&self, index: u8) -> u8 {
+        0
+    }
+
+    pub fn set_channel3_sample(&mut self, index: u8, data: u8) {
+
+    }
+
+    pub fn channel4_r1(&self) -> u8 {
+        0
+    }
+
+    pub fn set_channel4_r1(&mut self, data: u8) {
+
+    }
+
+    pub fn channel4_r2(&self) -> u8 {
+        0
+    }
+
+    pub fn set_channel4_r2(&mut self, data: u8) {
+
+    }
+
+    pub fn channel4_r3(&self) -> u8 {
+        0
+    }
+
+    pub fn set_channel4_r3(&mut self, data: u8) {
+
+    }
+
+    pub fn channel4_r4(&self) -> u8 {
+        0
+    }
+
+    pub fn set_channel4_r4(&mut self, data: u8) {
+
+    }
+
+    pub fn master_r0(&self) -> u8 {
+        0
+    }
+
+    pub fn set_master_r0(&mut self, data: u8) {
+
+    }
+
+    pub fn master_r1(&self) -> u8 {
+        0
+    }
+
+    pub fn set_master_r1(&mut self, data: u8) {
+
+    }
+
+    pub fn master_r2(&self) -> u8 {
+        0
+    }
+
+    pub fn set_master_r2(&mut self, data: u8) {
+
+    }
 }

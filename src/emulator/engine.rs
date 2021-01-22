@@ -12,6 +12,7 @@ use crate::emulator::ppu::SCREEN_BUFFER_WIDTH;
 use crate::emulator::joypad::Joypad;
 use crate::emulator::mmu::Memory;
 use crate::emulator::serial::Serial;
+use crate::emulator::sound::Sounder;
 use crate::emulator::timer::Timer;
 
 pub const TICKS_PER_SECOND: u64 = 4_194_304;
@@ -65,6 +66,9 @@ pub struct Engine {
     // Serial
     // - $FF01..=$FF02 (Hardware IO)
     serial: Box<Serial>,
+
+    // Sounder
+    sounder: Box<Sounder>,
 
     // Timer
     // - $FF04..=$FF07 (Hardware IO)
@@ -147,6 +151,7 @@ impl Default for Engine {
             ppu: Box::new(Ppu::default()),
             joypad: Box::new(Joypad::default()),
             serial: Box::new(Serial::default()),
+            sounder: Box::new(Sounder::default()),
             timer: Box::new(Timer::default()),
             interruptions_enabled: Interrupts::default(),
             interruptions_requested: Interrupts::default(),
@@ -192,7 +197,51 @@ impl Memory for Engine {
                 0xFF06 => self.timer.modulo(),
                 0xFF07 => self.timer.control(),
 
-                // GPU
+                // Sounder
+                0xFF10 => self.sounder.channel1_r0(),
+                0xFF11 => self.sounder.channel1_r1(),
+                0xFF12 => self.sounder.channel1_r2(),
+                0xFF13 => self.sounder.channel1_r3(),
+                0xFF14 => self.sounder.channel1_r4(),
+
+                0xFF16 => self.sounder.channel2_r1(),
+                0xFF17 => self.sounder.channel2_r2(),
+                0xFF18 => self.sounder.channel2_r3(),
+                0xFF19 => self.sounder.channel2_r4(),
+
+                0xFF1A => self.sounder.channel3_r0(),
+                0xFF1B => self.sounder.channel3_r1(),
+                0xFF1C => self.sounder.channel3_r2(),
+                0xFF1D => self.sounder.channel3_r3(),
+                0xFF1E => self.sounder.channel3_r4(),
+
+                0xFF20 => self.sounder.channel4_r1(),
+                0xFF21 => self.sounder.channel4_r2(),
+                0xFF22 => self.sounder.channel4_r3(),
+                0xFF23 => self.sounder.channel4_r4(),
+
+                0xFF24 => self.sounder.master_r0(),
+                0xFF25 => self.sounder.master_r1(),
+                0xFF26 => self.sounder.master_r2(),
+
+                0xFF30 => self.sounder.channel3_sample(0x0),
+                0xFF31 => self.sounder.channel3_sample(0x1),
+                0xFF32 => self.sounder.channel3_sample(0x2),
+                0xFF33 => self.sounder.channel3_sample(0x3),
+                0xFF34 => self.sounder.channel3_sample(0x4),
+                0xFF35 => self.sounder.channel3_sample(0x5),
+                0xFF36 => self.sounder.channel3_sample(0x6),
+                0xFF37 => self.sounder.channel3_sample(0x7),
+                0xFF38 => self.sounder.channel3_sample(0x8),
+                0xFF39 => self.sounder.channel3_sample(0x9),
+                0xFF3A => self.sounder.channel3_sample(0xA),
+                0xFF3B => self.sounder.channel3_sample(0xB),
+                0xFF3C => self.sounder.channel3_sample(0xC),
+                0xFF3D => self.sounder.channel3_sample(0xD),
+                0xFF3E => self.sounder.channel3_sample(0xE),
+                0xFF3F => self.sounder.channel3_sample(0xF),
+
+                // PPU
                 0xFF40 => self.ppu.lcdc(),
                 0xFF41 => self.ppu.stat(),
                 0xFF42 => self.ppu.scroll_y(),
@@ -204,7 +253,6 @@ impl Memory for Engine {
                 0xFF49 => self.ppu.object_palette_1(),
                 0xFF4A => self.ppu.window_y(),
                 0xFF4B => self.ppu.window_x(),
-
                 _ => 0
             }
         } else if addr < 0xFFFF { // 0xFF80..=0xFFFE (Zero Page)
@@ -246,6 +294,50 @@ impl Memory for Engine {
                 0xFF05 => self.timer.set_counter(data),
                 0xFF06 => self.timer.set_modulo(data),
                 0xFF07 => self.timer.set_control(data),
+
+                // Sounder
+                0xFF10 => self.sounder.set_channel1_r0(data),
+                0xFF11 => self.sounder.set_channel1_r1(data),
+                0xFF12 => self.sounder.set_channel1_r2(data),
+                0xFF13 => self.sounder.set_channel1_r3(data),
+                0xFF14 => self.sounder.set_channel1_r4(data),
+
+                0xFF16 => self.sounder.set_channel2_r1(data),
+                0xFF17 => self.sounder.set_channel2_r2(data),
+                0xFF18 => self.sounder.set_channel2_r3(data),
+                0xFF19 => self.sounder.set_channel2_r4(data),
+
+                0xFF1A => self.sounder.set_channel3_r0(data),
+                0xFF1B => self.sounder.set_channel3_r1(data),
+                0xFF1C => self.sounder.set_channel3_r2(data),
+                0xFF1D => self.sounder.set_channel3_r3(data),
+                0xFF1E => self.sounder.set_channel3_r4(data),
+
+                0xFF20 => self.sounder.set_channel4_r1(data),
+                0xFF21 => self.sounder.set_channel4_r2(data),
+                0xFF22 => self.sounder.set_channel4_r3(data),
+                0xFF23 => self.sounder.set_channel4_r4(data),
+
+                0xFF24 => self.sounder.set_master_r0(data),
+                0xFF25 => self.sounder.set_master_r1(data),
+                0xFF26 => self.sounder.set_master_r2(data),
+
+                0xFF30 => self.sounder.set_channel3_sample(0x0, data),
+                0xFF31 => self.sounder.set_channel3_sample(0x1, data),
+                0xFF32 => self.sounder.set_channel3_sample(0x2, data),
+                0xFF33 => self.sounder.set_channel3_sample(0x3, data),
+                0xFF34 => self.sounder.set_channel3_sample(0x4, data),
+                0xFF35 => self.sounder.set_channel3_sample(0x5, data),
+                0xFF36 => self.sounder.set_channel3_sample(0x6, data),
+                0xFF37 => self.sounder.set_channel3_sample(0x7, data),
+                0xFF38 => self.sounder.set_channel3_sample(0x8, data),
+                0xFF39 => self.sounder.set_channel3_sample(0x9, data),
+                0xFF3A => self.sounder.set_channel3_sample(0xA, data),
+                0xFF3B => self.sounder.set_channel3_sample(0xB, data),
+                0xFF3C => self.sounder.set_channel3_sample(0xC, data),
+                0xFF3D => self.sounder.set_channel3_sample(0xD, data),
+                0xFF3E => self.sounder.set_channel3_sample(0xE, data),
+                0xFF3F => self.sounder.set_channel3_sample(0xF, data),
 
                 // PPU
                 0xFF40 => self.ppu.set_lcdc(data),
