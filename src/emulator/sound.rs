@@ -1,5 +1,7 @@
 pub mod flags;
 
+use flags::*;
+
 /*
     Name Addr 7654 3210 Function
     -----------------------------------------------------------------
@@ -147,7 +149,7 @@ impl Sounder {
     }
 
     pub fn set_channel1_r0(&mut self, data: u8) {
-
+        let _ = Channel1SweepControl::from_bits(data);
     }
 
     pub fn channel1_r1(&self) -> u8 {
@@ -155,7 +157,7 @@ impl Sounder {
     }
 
     pub fn set_channel1_r1(&mut self, data: u8) {
-
+        let _ = Channel1SequenceControl::from_bits(data);
     }
 
     pub fn channel1_r2(&self) -> u8 {
@@ -163,7 +165,7 @@ impl Sounder {
     }
 
     pub fn set_channel1_r2(&mut self, data: u8) {
-
+        let _ = Channel1EnvelopeControl::from_bits(data);
     }
 
     pub fn channel1_r3(&self) -> u8 {
@@ -171,7 +173,7 @@ impl Sounder {
     }
 
     pub fn set_channel1_r3(&mut self, data: u8) {
-
+        let _ = Channel1FrequencyLowerData::from_bits(data);
     }
 
     pub fn channel1_r4(&self) -> u8 {
@@ -179,7 +181,7 @@ impl Sounder {
     }
 
     pub fn set_channel1_r4(&mut self, data: u8) {
-
+        let _ = Channel1FrequencyHigherData::from_bits(data);
     }
 
     pub fn channel2_r1(&self) -> u8 {
@@ -187,7 +189,7 @@ impl Sounder {
     }
 
     pub fn set_channel2_r1(&mut self, data: u8) {
-
+        let _ = Channel2SequenceControl::from_bits(data);
     }
 
     pub fn channel2_r2(&self) -> u8 {
@@ -195,7 +197,7 @@ impl Sounder {
     }
 
     pub fn set_channel2_r2(&mut self, data: u8) {
-
+        let _ = Channel2EnvelopeControl::from_bits(data);
     }
 
     pub fn channel2_r3(&self) -> u8 {
@@ -203,7 +205,7 @@ impl Sounder {
     }
 
     pub fn set_channel2_r3(&mut self, data: u8) {
-
+        let _ = Channel2FrequencyLowerData::from_bits(data);
     }
 
     pub fn channel2_r4(&self) -> u8 {
@@ -211,7 +213,7 @@ impl Sounder {
     }
 
     pub fn set_channel2_r4(&mut self, data: u8) {
-
+        let _ = Channel2FrequencyHigherData::from_bits(data);
     }
 
     pub fn channel3_r0(&self) -> u8 {
@@ -219,7 +221,7 @@ impl Sounder {
     }
 
     pub fn set_channel3_r0(&mut self, data: u8) {
-
+        let _ = Channel3SoundOnOffStatus::from_bits(data);
     }
 
     pub fn channel3_r1(&self) -> u8 {
@@ -227,7 +229,7 @@ impl Sounder {
     }
 
     pub fn set_channel3_r1(&mut self, data: u8) {
-
+        let _ = Channel3SoundSequenceLength::from_bits(data);
     }
 
     pub fn channel3_r2(&self) -> u8 {
@@ -235,7 +237,7 @@ impl Sounder {
     }
 
     pub fn set_channel3_r2(&mut self, data: u8) {
-
+        let _ = Channel3VolumeSelection::from_bits(data);
     }
 
     pub fn channel3_r3(&self) -> u8 {
@@ -243,7 +245,7 @@ impl Sounder {
     }
 
     pub fn set_channel3_r3(&mut self, data: u8) {
-
+        let _ = Channel3FrequencyLowerData::from_bits(data);
     }
 
     pub fn channel3_r4(&self) -> u8 {
@@ -251,7 +253,7 @@ impl Sounder {
     }
 
     pub fn set_channel3_r4(&mut self, data: u8) {
-
+        let _ = Channel3FrequencyHigherData::from_bits(data);
     }
 
     pub fn channel3_sample(&self, index: u8) -> u8 {
@@ -259,7 +261,7 @@ impl Sounder {
     }
 
     pub fn set_channel3_sample(&mut self, index: u8, data: u8) {
-
+        //
     }
 
     pub fn channel4_r1(&self) -> u8 {
@@ -267,7 +269,7 @@ impl Sounder {
     }
 
     pub fn set_channel4_r1(&mut self, data: u8) {
-
+        let _ = Channel4SoundSequenceLength::from_bits(data);
     }
 
     pub fn channel4_r2(&self) -> u8 {
@@ -275,7 +277,7 @@ impl Sounder {
     }
 
     pub fn set_channel4_r2(&mut self, data: u8) {
-
+        let _ = Channel4EnvelopeControl::from_bits(data);
     }
 
     pub fn channel4_r3(&self) -> u8 {
@@ -283,7 +285,7 @@ impl Sounder {
     }
 
     pub fn set_channel4_r3(&mut self, data: u8) {
-
+        let _ = Channel4PolynomialCounterParameterControl::from_bits(data);
     }
 
     pub fn channel4_r4(&self) -> u8 {
@@ -291,7 +293,7 @@ impl Sounder {
     }
 
     pub fn set_channel4_r4(&mut self, data: u8) {
-
+        let _ = Channel4PolynomialCounterSequenceControl::from_bits(data);
     }
 
     pub fn master_r0(&self) -> u8 {
@@ -299,7 +301,7 @@ impl Sounder {
     }
 
     pub fn set_master_r0(&mut self, data: u8) {
-
+        let _ = MasterVolumeControl::from_bits(data);
     }
 
     pub fn master_r1(&self) -> u8 {
@@ -307,7 +309,7 @@ impl Sounder {
     }
 
     pub fn set_master_r1(&mut self, data: u8) {
-
+        let _ = MasterOutputControl::from_bits(data);
     }
 
     pub fn master_r2(&self) -> u8 {
@@ -315,6 +317,6 @@ impl Sounder {
     }
 
     pub fn set_master_r2(&mut self, data: u8) {
-
+        let _ = MasterOnOffControl::from_bits(data);
     }
 }
