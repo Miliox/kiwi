@@ -1,7 +1,7 @@
 #[allow(dead_code)]
 pub struct Cartridge {
     pub rom: Vec<u8>,
-    pub ram: Vec<u8>,
+    pub ram: Box<[u8; 0x2000]>,
 }
 
 #[allow(dead_code)]
@@ -9,7 +9,7 @@ impl Cartridge {
     pub fn new() -> Self {
         Self {
             rom: Vec::new(),
-            ram: Vec::new(),
+            ram: Box::new([0; 0x2000]),
         }
     }
 

@@ -173,15 +173,15 @@ impl Memory for Engine {
         if addr < 0x8000 {        // 0x0000..=0x7FFF (Cartridge ROM)
             self.cartridge.read_rom(addr)
         } else if addr < 0xA000 { // 0x8000..=0x9FFF (Video RAM)
-            self.ppu.read_video_ram(addr - 0x8000u16)
+            self.ppu.read_video_ram(addr - 0x8000)
         } else if addr < 0xC000 { // 0xA000..=0xBFFF (Cartridge RAM)
-            self.cartridge.read_ram(addr - 0xA000u16)
+            self.cartridge.read_ram(addr - 0xA000)
         } else if addr < 0xE000 { // 0xC000..=0xDFFF (Internal RAM)
             self.ram[(addr - 0xC000) as usize]
-        } else if addr < 0xE000 { // 0xE000..=0xFDFF (Echo RAM)
-            self.ram[(addr - 0xFE00) as usize]
+        } else if addr < 0xFE00 { // 0xE000..=0xFDFF (Echo RAM)
+            self.ram[(addr - 0xE000) as usize]
         } else if addr < 0xFEA0 { // 0xFE00..=0xFE9F (OAM)
-            self.ppu.read_object_attribute_ram(addr - 0xFE00u16)
+            self.ppu.read_object_attribute_ram(addr - 0xFE00)
         } else if addr < 0xFF00 { // 0xFEA0..=0xFEFF (Unusable)
             0
         } else if addr < 0xFF80 { // 0xFF00..=0xFF7F (Hardware IO)
