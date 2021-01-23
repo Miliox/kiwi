@@ -1,3 +1,4 @@
+use sdl2::audio::AudioQueue;
 use sdl2::render::Texture;
 
 use crate::emulator::bios::DMG_BIOS;
@@ -90,6 +91,10 @@ impl Engine {
 
     pub fn blit_frame_to_texture(&mut self, texture: &mut Texture) {
         texture.update(None, self.ppu.frame_buffer(), SCREEN_BUFFER_WIDTH).unwrap();
+    }
+
+    pub fn enqueue_audio_samples(&mut self, channels: &mut [AudioQueue<i8>; 4]) {
+        self.sounder.enqueue_audio_samples(channels);
     }
 
     pub fn process_event(&mut self, event: &sdl2::event::Event) {

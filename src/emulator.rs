@@ -11,7 +11,9 @@ pub mod timer;
 
 use engine::Engine;
 
+use sdl2::audio::AudioQueue;
 use sdl2::render::Texture;
+
 
 pub struct Emulator {
     clock: u64,
@@ -28,6 +30,10 @@ impl Emulator {
 
     pub fn blit_frame_to_texture(&mut self, texture: &mut Texture) {
         self.engine.blit_frame_to_texture(texture);
+    }
+
+    pub fn enqueue_audio_samples(&mut self, channels: &mut [AudioQueue<i8>; 4]) {
+        self.engine.enqueue_audio_samples(channels);
     }
 
     pub fn open_rom_file(&mut self, filename: &str) {

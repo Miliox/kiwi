@@ -49,28 +49,26 @@ fn main() {
         samples: Some(2048),
     };
 
-    /*
-    let channel1 = audio_subsystem.open_playback(None, &desired_spec, |spec| {
-        let freq = 100.0;
-        let phase_inc = freq / spec.freq as f32;
-        println!("SquareWaveChannel {} {}", freq, phase_inc);
-        SquareWaveChannel {
-            amplitude: 16,
-            phase_inc: freq / spec.freq as f32,
-            phase: 0.0,
-        }
-    }).unwrap();
-    channel1.resume();
-    */
+    let mut channels: [AudioQueue<i8>; 4] = [
+        audio_subsystem.open_queue(None, &desired_spec).unwrap(),
+        audio_subsystem.open_queue(None, &desired_spec).unwrap(),
+        audio_subsystem.open_queue(None, &desired_spec).unwrap(),
+        audio_subsystem.open_queue(None, &desired_spec).unwrap(),
+    ];
 
-    let mut channel1: AudioQueue<i8> = audio_subsystem.open_queue(None, &desired_spec).unwrap();
+    channels[0].resume();
+    channels[1].resume();
+    channels[2].resume();
+    channels[3].resume();
+
+    /*
     let mut channel1_wave = SquareWaveChannel {
         amplitude: 16,
         phase_inc: 100.0 / channel1.spec().freq as f32,
         phase: 0.0,
     };
     let mut buffer: [i8; 8192] = [0; 8192];
-    channel1.resume();
+    */
 
     let video_subsystem = sdl_context.video().unwrap();
 
@@ -112,16 +110,19 @@ fn main() {
 
         emulator.run_next_frame();
         emulator.blit_frame_to_texture(&mut texture);
+        emulator.enqueue_audio_samples(&mut channels);
         frame_counter += 1;
 
         canvas.clear();
         canvas.copy(&texture, None, None).unwrap();
         canvas.present();
 
+        /*
         if channel1.size() < buffer.len() as u32 {
             channel1_wave.callback(&mut buffer);
             channel1.queue(&buffer);
         }
+        */
 
         let frame_complete_timestamp = Instant::now();
         let frame_busy_duration = frame_complete_timestamp - frame_begin_timestamp;

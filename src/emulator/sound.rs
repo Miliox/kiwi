@@ -2,6 +2,37 @@ pub mod flags;
 
 use flags::*;
 
+use sdl2::audio::AudioQueue;
+
+fn set_low_frequency_param(fparam: u32, low: u32) -> u32 {
+    (fparam & 0x700) | (low & 0x0FF)
+}
+
+fn set_high_frequency_param(fparam: u32, high: u32) -> u32 {
+    ((high & 0x7) << 8) | fparam & 0xFF
+}
+
+fn calculate_frequency(f: u32) -> u32 {
+    131_072 / (2048 - f)
+}
+
+fn calculate_phase_duty(d: u8) -> f32 {
+    match d {
+        0 => 0.125,
+        1 => 0.25,
+        2 => 0.5,
+        3 => 0.75,
+        _ => 0.5
+    }
+}
+
+fn calculate_volume(v: u8) -> i8 {
+    let v: f32 = v as f32;
+    let coef: f32 = 1.0 / 15.0;
+    let maxv: f32 = 127.0;
+    (v * coef * maxv) as i8
+}
+
 /*
     Name Addr 7654 3210 Function
     -----------------------------------------------------------------
@@ -55,7 +86,6 @@ use flags::*;
 // NR13 FF13 FFFF FFFF Frequency LSB
 // NR14 FF14 TL-- -FFF Trigger, Length enable, Frequency MSB
 #[allow(dead_code)]
-#[derive(Default)]
 pub struct SquareChannel {
     left_enable: bool,
     right_enable: bool,
@@ -77,6 +107,39 @@ pub struct SquareChannel {
 
     wave_duty: u8,
     wave_length: u8,
+
+    buffer: Box<[i8; 8192]>,
+    phase_duty: f32,
+    phase_pos: f32,
+    volume: i8,
+}
+
+impl Default for SquareChannel {
+    fn default() -> Self {
+        Self {
+            left_enable: false,
+            right_enable: false,
+
+            playing: false,
+            restart: false,
+            repeat: false,
+            frequency: calculate_frequency(0),
+            fparam: 0,
+            envelope_add_mode: true,
+            envelope_start_volume: 0,
+            envelope_sweep_number: 0,
+            sweep_inverse: false,
+            sweep_period: 0,
+            sweep_shift: 0,
+            wave_duty: 0,
+            wave_length: 0,
+
+            buffer: Box::new([0; 8192]),
+            phase_duty: 0.5,
+            phase_pos: 0.0,
+            volume: 0,
+        }
+    }
 }
 
 //         Wave
@@ -147,6 +210,61 @@ pub struct Sounder {
     channel4: NoiseChannel,
 }
 
+pub trait SampleGenerator {
+    fn enqueue_audio_samples(&mut self, queue: &mut AudioQueue<i8>);
+}
+
+impl SampleGenerator for SquareChannel {
+    fn enqueue_audio_samples(&mut self, queue: &mut AudioQueue<i8>) {
+        if self.restart {
+            self.restart = false;
+            self.playing = true;
+            self.phase_pos = 0.0;
+            queue.clear();
+        }
+
+        if !self.playing {
+            return;
+        }
+
+        if !self.left_enable && !self.right_enable {
+            return;
+        }
+
+        let phase_inc = self.frequency as f32 / queue.spec().freq as f32;
+
+        let length = self.buffer.len();
+        if (queue.size() as usize) < length {
+            let length = length / 2;
+            for i in 0..length {
+                let sample = self.volume * if self.phase_pos < self.phase_duty { 1 } else { -1 };
+
+                self.phase_pos += phase_inc;
+                self.phase_pos %= 1.0;
+
+                // left
+                self.buffer[i * 2] = if self.left_enable { sample } else { 0 };
+
+                // right
+                self.buffer[i * 2 + 1] = if self.right_enable { sample } else { 0 };
+            }
+            queue.queue(&*self.buffer);
+        }
+    }
+}
+
+impl SampleGenerator for NoiseChannel {
+    fn enqueue_audio_samples(&mut self, _queue: &mut AudioQueue<i8>) {
+
+    }
+}
+
+impl SampleGenerator for WaveChannel {
+    fn enqueue_audio_samples(&mut self, _queue: &mut AudioQueue<i8>) {
+
+    }
+}
+
 impl Sounder {
     pub fn channel1_r0(&self) -> u8 {
         0
@@ -171,7 +289,13 @@ impl Sounder {
         let r = Channel1SequenceControl::from_bits(data).unwrap();
         self.channel1.wave_duty = (r & Channel1SequenceControl::SOUND_SEQUENCE_DUTY_MASK).bits() >> 6;
         self.channel1.wave_length = (r & Channel1SequenceControl::SOUND_SEQUENCE_LENGTH_MASK).bits();
-        println!("NR11 ch1_duty={} ch1_len={}", self.channel1.wave_duty, self.channel1.wave_length);
+
+        self.channel1.phase_duty = calculate_phase_duty(self.channel1.wave_duty);
+
+        println!("NR11 ch1_duty={} ch1_len={} ch1_duty={}",
+            self.channel1.wave_duty,
+            self.channel1.wave_length,
+            self.channel1.phase_duty);
     }
 
     pub fn channel1_r2(&self) -> u8 {
@@ -183,10 +307,13 @@ impl Sounder {
         self.channel1.envelope_start_volume = (r & Channel1EnvelopeControl::ENVELOPE_INITIAL_VOLUME_MASK).bits() >> 4;
         self.channel1.envelope_add_mode = r.contains(Channel1EnvelopeControl::ENVELOPE_DIRECTION_SELECT);
         self.channel1.envelope_sweep_number = (r & Channel1EnvelopeControl::ENVELOPE_SWEEP_NUMBER_MASK).bits();
-        println!("NR12 ch1_env_start_vol={} ch1_env_add_mode={} ch1_env_num={}",
+        self.channel1.volume = calculate_volume(self.channel1.envelope_start_volume);
+
+        println!("NR12 ch1_env_start_vol={} ch1_env_add_mode={} ch1_env_num={} ch1_vol={}",
             self.channel1.envelope_start_volume,
             self.channel1.envelope_add_mode,
-            self.channel1.envelope_sweep_number);
+            self.channel1.envelope_sweep_number,
+            self.channel1.volume);
     }
 
     pub fn channel1_r3(&self) -> u8 {
@@ -194,8 +321,8 @@ impl Sounder {
     }
 
     pub fn set_channel1_r3(&mut self, data: u8) {
-        self.channel1.fparam = (self.channel1.fparam & 0x300) | data as u32;
-        self.channel1.frequency = Self::calculate_frequency(self.channel1.fparam);
+        self.channel1.fparam = set_low_frequency_param(self.channel1.fparam, data as u32);
+        self.channel1.frequency = calculate_frequency(self.channel1.fparam);
         println!("NR13 ch1_fparam={} ch1_freq={}", self.channel1.fparam, self.channel1.frequency);
     }
 
@@ -205,7 +332,8 @@ impl Sounder {
 
     pub fn set_channel1_r4(&mut self, data: u8) {
         let r = Channel1FrequencyHigherData::from_bits(data).unwrap();
-        self.channel1.fparam = (self.channel1.fparam & 0xFF) | (data as u32 & 0x3) << 8;
+        self.channel1.fparam = set_high_frequency_param(self.channel1.fparam, data as u32);
+        self.channel1.frequency = calculate_frequency(self.channel1.fparam);
         self.channel1.repeat = !r.contains(Channel1FrequencyHigherData::STOP_ON_SEQUENCE_COMPLETE);
         self.channel1.restart = r.contains(Channel1FrequencyHigherData::RESTART_SEQUENCE);
         println!("NR14 ch1_fparam={} ch1_freq={} ch1_repeat={} ch1_restart={}",
@@ -220,8 +348,16 @@ impl Sounder {
     }
 
     pub fn set_channel2_r1(&mut self, data: u8) {
-        let _r = Channel2SequenceControl::from_bits(data);
-        println!("NR21 {:?}", _r);
+        let r = Channel2SequenceControl::from_bits(data).unwrap();
+
+        self.channel2.wave_duty = (r & Channel2SequenceControl::SOUND_SEQUENCE_DUTY_MASK).bits() >> 6;
+        self.channel2.wave_length = (r & Channel2SequenceControl::SOUND_SEQUENCE_LENGTH_MASK).bits();
+        self.channel2.phase_duty = calculate_phase_duty(self.channel2.wave_duty);
+
+        println!("NR21 ch2_duty={} ch2_len={} ch2_duty={}",
+            self.channel2.wave_duty,
+            self.channel2.wave_length,
+            self.channel2.phase_duty);
     }
 
     pub fn channel2_r2(&self) -> u8 {
@@ -229,8 +365,18 @@ impl Sounder {
     }
 
     pub fn set_channel2_r2(&mut self, data: u8) {
-        let _r = Channel2EnvelopeControl::from_bits(data);
-        println!("NR22 {:?}", _r);
+        let r = Channel2EnvelopeControl::from_bits(data).unwrap();
+
+        self.channel2.envelope_start_volume = (r & Channel2EnvelopeControl::ENVELOPE_INITIAL_VOLUME_MASK).bits() >> 4;
+        self.channel2.envelope_add_mode = r.contains(Channel2EnvelopeControl::ENVELOPE_DIRECTION_SELECT);
+        self.channel2.envelope_sweep_number = (r & Channel2EnvelopeControl::ENVELOPE_SWEEP_NUMBER_MASK).bits();
+        self.channel2.volume = calculate_volume(self.channel2.envelope_start_volume);
+
+        println!("NR22 ch2_env_start_vol={} ch2_env_add_mode={} ch2_env_num={} ch2_vol={}",
+            self.channel1.envelope_start_volume,
+            self.channel1.envelope_add_mode,
+            self.channel1.envelope_sweep_number,
+            self.channel1.volume);
     }
 
     pub fn channel2_r3(&self) -> u8 {
@@ -238,8 +384,10 @@ impl Sounder {
     }
 
     pub fn set_channel2_r3(&mut self, data: u8) {
-        let _r = Channel2FrequencyLowerData::from_bits(data);
-        println!("NR23 {:?}", _r);
+        self.channel2.fparam = set_low_frequency_param(self.channel2.fparam, data as u32);
+        self.channel2.frequency = calculate_frequency(self.channel2.fparam);
+
+        println!("NR23 ch2_fparam={} ch2_freq={}", self.channel2.fparam, self.channel2.frequency);
     }
 
     pub fn channel2_r4(&self) -> u8 {
@@ -247,8 +395,17 @@ impl Sounder {
     }
 
     pub fn set_channel2_r4(&mut self, data: u8) {
-        let _r = Channel2FrequencyHigherData::from_bits(data);
-        println!("NR24 {:?}", _r);
+        let r = Channel2FrequencyHigherData::from_bits(data).unwrap();
+
+        self.channel2.fparam = set_high_frequency_param(self.channel2.fparam, data as u32);
+        self.channel2.repeat = !r.contains(Channel2FrequencyHigherData::STOP_ON_SEQUENCE_COMPLETE);
+        self.channel2.restart = r.contains(Channel2FrequencyHigherData::RESTART_SEQUENCE);
+
+        println!("NR24 ch2_fparam={} ch2_freq={} ch2_repeat={} ch2_restart={}",
+            self.channel2.fparam,
+            self.channel2.frequency,
+            self.channel2.repeat,
+            self.channel2.restart);
     }
 
     pub fn channel3_r0(&self) -> u8 {
@@ -387,7 +544,10 @@ impl Sounder {
         println!("NR52 sound_on={}", self.enable);
     }
 
-    fn calculate_frequency(f: u32) -> u32 {
-        131_072 / (2048 - f)
+    pub fn enqueue_audio_samples(&mut self, channels: &mut [AudioQueue<i8>; 4]) {
+        self.channel1.enqueue_audio_samples(&mut channels[0]);
+        self.channel2.enqueue_audio_samples(&mut channels[1]);
+        self.channel3.enqueue_audio_samples(&mut channels[2]);
+        self.channel4.enqueue_audio_samples(&mut channels[3]);
     }
 }
