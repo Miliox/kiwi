@@ -33,6 +33,47 @@ fn calculate_volume(v: u8) -> i8 {
     (v * coef * maxv) as i8
 }
 
+fn calculate_sample(s: u8) -> i8 {
+    /*
+    F |               **
+    E |              *  *
+    D |             *    *
+    C |            *      *
+    B |           *        *
+    A |          *          *
+    9 |         *            *
+    8 |        *              *
+    7 |       *                *
+    6 |      *                  *
+    5 |     *                    *
+    4 |    *                      *
+    3 |   *                        *
+    2 |  *                          *
+    1 | *                            *
+    0 |*                              *
+    *  --------------------------------
+    */
+    match s {
+        0 => -127,
+        1 => -109,
+        2 => -90,
+        3 => -72,
+        4 => -54,
+        5 => -36,
+        6 => -18,
+        7 => 0,
+        8 => 0,
+        9 => 18,
+        10 => 36,
+        11 => 54,
+        12 => 72,
+        13 => 90,
+        14 => 109,
+        15 => 127,
+        _ => panic!(),
+    }
+}
+
 /*
     Name Addr 7654 3210 Function
     -----------------------------------------------------------------
@@ -97,9 +138,10 @@ pub struct SquareChannel {
     frequency: u32,
     fparam: u32,
 
-    envelope_add_mode: bool,
+    envelope_direction: bool,
     envelope_start_volume: u8,
     envelope_sweep_number: u8,
+
 
     sweep_inverse: bool,
     sweep_period: u8,
@@ -111,6 +153,8 @@ pub struct SquareChannel {
     buffer: Box<[i8; 8192]>,
     phase_duty: f32,
     phase_pos: f32,
+    step_counter: f32,
+    volume_step: u8,
     volume: i8,
 }
 
@@ -125,9 +169,12 @@ impl Default for SquareChannel {
             repeat: false,
             frequency: calculate_frequency(0),
             fparam: 0,
-            envelope_add_mode: true,
+
             envelope_start_volume: 0,
             envelope_sweep_number: 0,
+            envelope_direction: true,
+
+
             sweep_inverse: false,
             sweep_period: 0,
             sweep_shift: 0,
@@ -137,6 +184,8 @@ impl Default for SquareChannel {
             buffer: Box::new([0; 8192]),
             phase_duty: 0.5,
             phase_pos: 0.0,
+            step_counter: 0.0,
+            volume_step: 0,
             volume: 0,
         }
     }
@@ -155,11 +204,13 @@ pub struct WaveChannel {
     right_enable: bool,
 
     playing: bool,
+    restart: bool,
     repeat: bool,
     frequency: u16,
 
     wave_length_load: u8,
     wave_volume: u8,
+    wave_samples: [i8; 32],
 }
 
 //         Noise
@@ -232,11 +283,33 @@ impl SampleGenerator for SquareChannel {
         }
 
         let phase_inc = self.frequency as f32 / queue.spec().freq as f32;
+        let step_size = self.envelope_sweep_number as f32 * (queue.spec().freq as f32 / 64.0);
 
         let length = self.buffer.len();
         if (queue.size() as usize) < length {
             let length = length / 2;
             for i in 0..length {
+                // envelope
+                if step_size > 0.0 {
+                    if self.step_counter >= step_size {
+                        self.step_counter -= step_size;
+                        if self.envelope_direction {
+                            if self.volume_step < 0xF {
+                                self.volume_step += 1;
+                            }
+                        } else {
+                            if self.volume_step >= 0x1 {
+                                self.volume_step -= 1;
+                            }
+                        }
+                        self.volume = calculate_volume(self.volume_step);
+                        if self.volume_step == 0 {
+                            self.playing = false;
+                        }
+                    }
+                    self.step_counter += 1.0;
+                }
+
                 let sample = self.volume * if self.phase_pos < self.phase_duty { 1 } else { -1 };
 
                 self.phase_pos += phase_inc;
@@ -305,13 +378,14 @@ impl Sounder {
     pub fn set_channel1_r2(&mut self, data: u8) {
         let r = Channel1EnvelopeControl::from_bits(data).unwrap();
         self.channel1.envelope_start_volume = (r & Channel1EnvelopeControl::ENVELOPE_INITIAL_VOLUME_MASK).bits() >> 4;
-        self.channel1.envelope_add_mode = r.contains(Channel1EnvelopeControl::ENVELOPE_DIRECTION_SELECT);
+        self.channel1.envelope_direction = r.contains(Channel1EnvelopeControl::ENVELOPE_DIRECTION_SELECT);
         self.channel1.envelope_sweep_number = (r & Channel1EnvelopeControl::ENVELOPE_SWEEP_NUMBER_MASK).bits();
-        self.channel1.volume = calculate_volume(self.channel1.envelope_start_volume);
+        self.channel1.volume_step = self.channel1.envelope_start_volume;
+        self.channel1.volume = calculate_volume(self.channel1.volume_step);
 
-        println!("NR12 ch1_env_start_vol={} ch1_env_add_mode={} ch1_env_num={} ch1_vol={}",
+        println!("NR12 ch1_env_start_vol={} ch1_env_dir={} ch1_env_num={} ch1_vol={}",
             self.channel1.envelope_start_volume,
-            self.channel1.envelope_add_mode,
+            self.channel1.envelope_direction,
             self.channel1.envelope_sweep_number,
             self.channel1.volume);
     }
@@ -368,13 +442,13 @@ impl Sounder {
         let r = Channel2EnvelopeControl::from_bits(data).unwrap();
 
         self.channel2.envelope_start_volume = (r & Channel2EnvelopeControl::ENVELOPE_INITIAL_VOLUME_MASK).bits() >> 4;
-        self.channel2.envelope_add_mode = r.contains(Channel2EnvelopeControl::ENVELOPE_DIRECTION_SELECT);
+        self.channel2.envelope_direction = r.contains(Channel2EnvelopeControl::ENVELOPE_DIRECTION_SELECT);
         self.channel2.envelope_sweep_number = (r & Channel2EnvelopeControl::ENVELOPE_SWEEP_NUMBER_MASK).bits();
         self.channel2.volume = calculate_volume(self.channel2.envelope_start_volume);
 
-        println!("NR22 ch2_env_start_vol={} ch2_env_add_mode={} ch2_env_num={} ch2_vol={}",
+        println!("NR22 ch2_env_start_vol={} ch2_env_dir={} ch2_env_num={} ch2_vol={}",
             self.channel1.envelope_start_volume,
-            self.channel1.envelope_add_mode,
+            self.channel1.envelope_direction,
             self.channel1.envelope_sweep_number,
             self.channel1.volume);
     }
@@ -453,12 +527,18 @@ impl Sounder {
         println!("NR34 {:?}", _r);
     }
 
-    pub fn channel3_sample(&self, index: u8) -> u8 {
+    pub fn channel3_sample(&self, _index: u8) -> u8 {
         0
     }
 
     pub fn set_channel3_sample(&mut self, index: u8, data: u8) {
-        //
+        let index = index as usize;
+        let sample1 = calculate_sample((data & 0xF0) >> 4);
+        let sample2 = calculate_sample(data &0x0F);
+        println!("CH3 S[{}]={} S[{}]={}", 2 * index, sample1, 2 * index + 1, sample2);
+
+        self.channel3.wave_samples[2 * index] = sample1;
+        self.channel3.wave_samples[2 * index + 1] = sample2;
     }
 
     pub fn channel4_r1(&self) -> u8 {
