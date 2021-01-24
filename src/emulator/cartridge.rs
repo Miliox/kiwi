@@ -2,6 +2,21 @@
 pub struct Cartridge {
     pub rom: Vec<u8>,
     pub ram: Box<[u8; 0x2000]>,
+
+    switchable_rom_bank_offset: usize,
+}
+
+fn rom_bank_count(rom_size_code: u8) -> usize {
+    match rom_size_code {
+        0 => 2,
+        1 => 4,
+        2 => 8,
+        3 => 16,
+        4 => 32,
+        5 => 64,
+        6 => 128,
+        _ => panic!(""),
+    }
 }
 
 #[allow(dead_code)]
@@ -10,15 +25,46 @@ impl Cartridge {
         Self {
             rom: Vec::new(),
             ram: Box::new([0; 0x2000]),
+            switchable_rom_bank_offset: 0x4000,
         }
     }
 
     pub fn open(&mut self, filename: &str) {
         self.rom = std::fs::read(filename).unwrap();
+
+        println!("Cartridge title={} type={} rom={} ram={}",
+            self.title(),
+            self.cart_type(),
+            self.rom_size_code(),
+            self.ram_size_code());
     }
 
     pub fn read_rom(&self, addr: u16) -> u8 {
-        self.rom[addr as usize]
+        let mut addr = addr as usize;
+        if addr >= 0x4000 {
+            addr -= 0x4000;
+            addr += self.switchable_rom_bank_offset;
+        }
+        self.rom[addr]
+    }
+
+    pub fn write_rom(&mut self, addr: u16, data: u8) {
+        match self.cart_type() {
+            1 => {
+                match addr {
+                    0x2000..=0x3FFF => {
+                        self.switchable_rom_bank_offset = match data {
+                            0 => 0x4000,
+                            1..=6 => 0x4000 * data as usize,
+                            _ => panic!("{}", data)
+                        };
+                        println!("Switch Cartridge Bank {} {:04X}", data, self.switchable_rom_bank_offset);
+                    }
+                    _ => { }
+                }
+            }
+            _ => {}
+        }
     }
 
     pub fn read_ram(&self, addr: u16) -> u8 {

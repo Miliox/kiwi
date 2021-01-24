@@ -261,7 +261,7 @@ impl Memory for Engine {
                 _ => 0
             }
         } else if addr < 0xFFFF { // 0xFF80..=0xFFFE (Zero Page)
-            self.ram[0x2000 + (addr - 0xFF80u16) as usize]
+            self.ram[0x2000 + (addr - 0xFF80) as usize]
         } else {
             self.interruptions_enabled.into()
         }
@@ -269,7 +269,9 @@ impl Memory for Engine {
 
     fn write(&mut self, addr: u16, data: u8) {
         if addr < 0x8000 {        // 0x0000..=0x7FFF (Cartridge ROM)
-            // read-only
+            // println!("crom write {:02X} => {:04X}", data, addr);
+            // read-only, but writting to it configures the rom bank switch
+            self.cartridge.write_rom(addr, data);
         } else if addr < 0xA000 { // 0x8000..=0x9FFF (Video RAM)
             self.ppu.write_video_ram(addr - 0x8000, data)
         } else if addr < 0xC000 { // 0xA000..=0xBFFF (Cartridge RAM)
@@ -359,9 +361,9 @@ impl Memory for Engine {
                 // DMA
                 0xFF46 => {
                     if data <= 0xF1 {
-                        println!("DMA ${:02x}00", data);
-
                         let addr = u16::from_be_bytes([data, 0x00]);
+                        println!("DMA ${:02X}00 ${:04X}", data, addr);
+
                         let mut oam: [u8; 160] = [0; 160];
                         for i in 0..160 {
                             oam[i] = self.read(addr + i as u16)
